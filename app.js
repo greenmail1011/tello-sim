@@ -1,4 +1,4 @@
-// Tello 飛行模擬器 —— 網頁介面、3D 場景、時間軸播放
+// Tello 飛行模擬器 —— 網頁介面、3D 場景、音效、時間軸播放
 let THREE;
 try {
   THREE = await import("./lib/three.module.min.js");
@@ -14,6 +14,8 @@ const store = {
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 const fmtTime = (t) => { const m = Math.floor(t / 60); const s = t - m * 60; return m + ":" + (s < 10 ? "0" : "") + s.toFixed(1); };
 const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+let seed = 20270101;
+const rand = () => { seed = (seed * 1664525 + 1013904223) % 4294967296; return seed / 4294967296; };
 
 /* =========================================================
    範例程式
@@ -57,6 +59,19 @@ tello.flip_right()
 
 tello.land()
 `],
+  ["飛一顆星星", `from djitellopy import Tello
+
+tello = Tello()
+tello.connect()
+tello.takeoff()
+
+# 每次轉 144 度，5 次就會畫出星星
+for i in range(5):
+    tello.move_forward(150)
+    tello.rotate_clockwise(144)
+
+tello.land()
+`],
   ["曲線飛行", `from djitellopy import Tello
 
 tello = Tello()
@@ -70,20 +85,20 @@ tello.curve_xyz_speed(100, 100, 0, 200, 0, 0, 30)
 tello.go_xyz_speed(-200, 0, 0, 50)
 tello.land()
 `],
-  ["遙控模式：畫圓圈", `from djitellopy import Tello
+  ["遙控模式：螺旋上升", `from djitellopy import Tello
 import time
 
 tello = Tello()
 tello.connect()
 tello.takeoff()
 
-# 一邊往前、一邊順時針旋轉，就會繞圓圈
-tello.send_rc_control(0, 40, 0, 40)
-time.sleep(9)
+# 一邊前進、一邊上升、一邊旋轉
+tello.send_rc_control(0, 30, 15, 45)
+time.sleep(8)
 
 # 全部設成 0 = 停下來
 tello.send_rc_control(0, 0, 0, 0)
-time.sleep(1)
+print("爬到高度：", tello.get_height(), "公分")
 tello.land()
 `],
   ["用感測器決定高度", `from djitellopy import Tello
@@ -118,32 +133,131 @@ tello.land()
    任務（座標單位：公分；x = 前方、y = 左方、z = 高度）
    ========================================================= */
 const RINGS = [
-  { x: 150, y: 0, z: 120, axis: "x" },
-  { x: 350, y: 0, z: 200, axis: "x" },
-  { x: 450, y: 150, z: 200, axis: "y" },
+  { x: 150, y: 0, z: 120, axis: "x", color: 0xff5d5d },
+  { x: 350, y: 0, z: 200, axis: "x", color: 0xffbf1f },
+  { x: 450, y: 150, z: 200, axis: "y", color: 0xa66cff },
 ];
 const RING_PASS = 40, RING_FRAME = 62;
 const PILLAR = { x: 250, y: 0, r: 20, h: 300 };
 const PAD = { x: 200, y: 0, r: 35 };
 
 const MISSIONS = {
-  free: {
-    name: "自由飛行",
-    desc: "沒有任務，盡情測試你的程式！場地 <b>10 × 10 公尺</b>，地上每一格 <b>50 公分</b>。",
-  },
-  pad: {
-    name: "任務 1｜降落停機坪",
-    desc: "停機坪在起點<b>正前方 2 公尺</b>。起飛、飛過去，然後準確降落在停機坪上（誤差 35 公分內）。",
-  },
-  rings: {
-    name: "任務 2｜穿越三個圈",
-    desc: "照順序穿過 3 個圈，最後降落：<br>① 前方 1.5 m、高度 1.2 m<br>② 前方 3.5 m、高度 2 m<br>③ 前方 4.5 m、<b>左邊 1.5 m</b>、高度 2 m（圈面向側邊）<br>碰到圈的框會撞機喔！",
-  },
-  pillar: {
-    name: "任務 3｜繞柱子一圈",
-    desc: "柱子在起點<b>正前方 2.5 公尺</b>。讓 Tello 繞柱子一整圈，再回到起點 H 降落（誤差 50 公分內）。小心別撞到柱子！",
-  },
+  free: { name: "🎈 自由飛行", desc: "沒有任務，盡情測試你的程式！場地 <b>10 × 10 公尺</b>，每一塊彩色地墊是 <b>1 公尺</b>。" },
+  pad: { name: "🎯 任務 1｜降落停機坪", desc: "黃色停機坪在起點<b>正前方 2 公尺</b>。起飛、飛過去，然後準確降落在停機坪上（誤差 35 公分內）。" },
+  rings: { name: "⭕ 任務 2｜穿越三個圈", desc: "照順序穿過 3 個圈，最後降落：<br>① 前方 1.5 m、高度 1.2 m<br>② 前方 3.5 m、高度 2 m<br>③ 前方 4.5 m、<b>左邊 1.5 m</b>、高度 2 m（圈面向側邊）<br>碰到圈的框會撞機喔！" },
+  pillar: { name: "🍭 任務 3｜繞柱子一圈", desc: "糖果柱在起點<b>正前方 2.5 公尺</b>。讓 Tello 繞柱子一整圈，再回到起點 H 降落（誤差 50 公分內）。小心別撞到柱子！" },
 };
+
+/* =========================================================
+   音效（Web Audio 即時合成，不需要音效檔）
+   ========================================================= */
+const Sound = (() => {
+  let ctx = null, master = null, motor = null, noiseBuf = null;
+  let enabled = store.get("sound", "1") === "1";
+  function ensure() {
+    if (ctx) { if (ctx.state === "suspended") ctx.resume(); return ctx; }
+    const AC = window.AudioContext || window.webkitAudioContext;
+    if (!AC) return null;
+    ctx = new AC();
+    master = ctx.createGain();
+    master.gain.value = enabled ? 0.9 : 0;
+    master.connect(ctx.destination);
+    noiseBuf = ctx.createBuffer(1, ctx.sampleRate * 2, ctx.sampleRate);
+    const d = noiseBuf.getChannelData(0);
+    for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
+    buildMotor();
+    return ctx;
+  }
+  function buildMotor() {
+    const out = ctx.createGain(); out.gain.value = 0; out.connect(master);
+    const lp = ctx.createBiquadFilter(); lp.type = "lowpass"; lp.frequency.value = 1500; lp.Q.value = 0.8; lp.connect(out);
+    const am = ctx.createGain(); am.gain.value = 0.7; am.connect(lp);
+    const o1 = ctx.createOscillator(); o1.type = "sawtooth"; o1.frequency.value = 170;
+    const o2 = ctx.createOscillator(); o2.type = "sawtooth"; o2.frequency.value = 256;
+    const g1 = ctx.createGain(); g1.gain.value = 0.5; o1.connect(g1).connect(am);
+    const g2 = ctx.createGain(); g2.gain.value = 0.3; o2.connect(g2).connect(am);
+    const lfo = ctx.createOscillator(); lfo.frequency.value = 40;
+    const lfoG = ctx.createGain(); lfoG.gain.value = 0.28; lfo.connect(lfoG).connect(am.gain);
+    const nz = ctx.createBufferSource(); nz.buffer = noiseBuf; nz.loop = true;
+    const bp = ctx.createBiquadFilter(); bp.type = "bandpass"; bp.frequency.value = 900; bp.Q.value = 0.7;
+    const ng = ctx.createGain(); ng.gain.value = 0.45; nz.connect(bp).connect(ng).connect(out);
+    o1.start(); o2.start(); lfo.start(); nz.start();
+    const wn = ctx.createBufferSource(); wn.buffer = noiseBuf; wn.loop = true; wn.playbackRate.value = 0.7;
+    const wlp = ctx.createBiquadFilter(); wlp.type = "lowpass"; wlp.frequency.value = 450; wlp.Q.value = 0.5;
+    const wg = ctx.createGain(); wg.gain.value = 0; wn.connect(wlp).connect(wg).connect(master); wn.start();
+    motor = { out, o1, o2, lfo, bp, wg, wlp };
+  }
+  function setMotor(on, spd, climb, rate) {
+    if (!ctx || !motor) return;
+    const t = ctx.currentTime;
+    const f = (150 + Math.min(spd, 160) * 0.65 + Math.max(0, climb) * 0.9) * (1 + (rate - 1) * 0.05);
+    motor.o1.frequency.setTargetAtTime(f, t, 0.08);
+    motor.o2.frequency.setTargetAtTime(f * 1.505, t, 0.08);
+    motor.lfo.frequency.setTargetAtTime(f / 4.3, t, 0.08);
+    motor.bp.frequency.setTargetAtTime(700 + f * 2, t, 0.1);
+    motor.out.gain.setTargetAtTime(on ? 0.06 : 0, t, on ? 0.15 : 0.2);
+  }
+  function setWind(level) {
+    if (!ctx || !motor) return;
+    const t = ctx.currentTime;
+    motor.wg.gain.setTargetAtTime(level * 0.5, t, 0.4);
+    motor.wlp.frequency.setTargetAtTime(300 + level * 900, t, 0.4);
+  }
+  function tone(freq, dur, type = "sine", vol = 0.2, when = 0, slideTo = null) {
+    if (!ctx || !enabled) return;
+    const t = ctx.currentTime + when;
+    const o = ctx.createOscillator(); o.type = type; o.frequency.setValueAtTime(freq, t);
+    if (slideTo) o.frequency.exponentialRampToValueAtTime(slideTo, t + dur);
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.exponentialRampToValueAtTime(vol, t + 0.015);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+    o.connect(g).connect(master);
+    o.start(t); o.stop(t + dur + 0.05);
+  }
+  function whoosh(dur, f0, f1, vol = 0.25, when = 0, type = "bandpass") {
+    if (!ctx || !enabled) return;
+    const t = ctx.currentTime + when;
+    const s = ctx.createBufferSource(); s.buffer = noiseBuf;
+    const f = ctx.createBiquadFilter(); f.type = type; f.Q.value = 1.2;
+    f.frequency.setValueAtTime(f0, t); f.frequency.exponentialRampToValueAtTime(f1, t + dur);
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.exponentialRampToValueAtTime(vol, t + dur * 0.35);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+    s.connect(f).connect(g).connect(master);
+    s.start(t); s.stop(t + dur + 0.05);
+  }
+  const sfx = {
+    flip() { whoosh(0.7, 300, 2600, 0.35); tone(500, 0.5, "triangle", 0.06, 0.05, 1200); },
+    ring() { [1046, 1318, 1568, 2093].forEach((f, i) => tone(f, 0.35, "triangle", 0.13, i * 0.06)); },
+    crash() { whoosh(0.6, 1200, 120, 0.6, 0, "lowpass"); tone(140, 0.5, "sine", 0.4, 0, 40); tone(90, 0.35, "square", 0.08, 0.02, 45); },
+    success() { [523, 659, 784, 1046].forEach((f, i) => tone(f, 0.28, "triangle", 0.16, i * 0.11)); [523, 659, 784].forEach((f) => tone(f * 2, 0.7, "sine", 0.06, 0.48)); },
+    done() { tone(784, 0.18, "triangle", 0.14, 0); tone(1046, 0.35, "triangle", 0.14, 0.12); },
+    fail() { tone(392, 0.25, "triangle", 0.15, 0); tone(330, 0.25, "triangle", 0.15, 0.2); tone(262, 0.45, "triangle", 0.15, 0.4); },
+    error() { tone(220, 0.16, "square", 0.07, 0); tone(185, 0.3, "square", 0.07, 0.18); },
+    ding() { tone(1568, 0.25, "sine", 0.1); tone(2349, 0.2, "sine", 0.04, 0.02); },
+    warn() { tone(880, 0.15, "triangle", 0.1); tone(660, 0.22, "triangle", 0.1, 0.14); },
+    takeoff() { tone(220, 0.9, "sine", 0.05, 0, 440); },
+  };
+  function setEnabled(v) {
+    enabled = v;
+    store.set("sound", v ? "1" : "0");
+    if (master) master.gain.setTargetAtTime(v ? 0.9 : 0, ctx.currentTime, 0.05);
+  }
+  return { ensure, setMotor, setWind, sfx, setEnabled, get enabled() { return enabled; } };
+})();
+document.addEventListener("pointerdown", () => Sound.ensure(), { capture: true });
+document.addEventListener("keydown", () => Sound.ensure(), { capture: true });
+const SOUND_ON = '<path d="M11 5 6 9H3v6h3l5 4z"/><path d="M15.5 8.5a5 5 0 0 1 0 7M18.5 5.5a9 9 0 0 1 0 13"/>';
+const SOUND_OFF = '<path d="M11 5 6 9H3v6h3l5 4z"/><path d="m16 9 6 6M22 9l-6 6"/>';
+function paintSound() {
+  $("soundIcon").innerHTML = Sound.enabled ? SOUND_ON : SOUND_OFF;
+  $("soundText").textContent = Sound.enabled ? "音效" : "靜音";
+  $("soundBtn").classList.toggle("off", !Sound.enabled);
+}
+$("soundBtn").addEventListener("click", () => { Sound.ensure(); Sound.setEnabled(!Sound.enabled); paintSound(); });
+paintSound();
 
 /* =========================================================
    程式編輯器（textarea + 語法上色）
@@ -153,7 +267,7 @@ const KW = new Set("False None True and as assert break class continue def del e
 const TELLO_METHODS = new Set(("connect takeoff land emergency end move move_forward move_back move_left move_right move_up move_down " +
   "rotate_clockwise rotate_counter_clockwise flip flip_left flip_right flip_forward flip_back set_speed go_xyz_speed curve_xyz_speed " +
   "send_rc_control get_battery get_height get_yaw get_flight_time get_temperature get_distance_tof get_barometer get_pitch get_roll " +
-  "streamon streamoff get_frame_read send_control_command send_command_with_return query_battery get_current_state get_state_field").split(" "));
+  "streamon streamoff get_frame_read send_control_command send_command_with_return send_read_command query_battery get_current_state get_state_field").split(" "));
 let lineCount = 0;
 
 function highlight(src) {
@@ -199,14 +313,13 @@ function syncScroll() {
 
 let edLine = null, edErr = false;
 function setEditorLine(line, isErr) {
-  if (line === edLine && isErr === edErr) return;
-  edLine = line; edErr = isErr;
+  if (line === edLine && !!isErr === edErr) return;
+  edLine = line; edErr = !!isErr;
   if (!line) { hlLine.style.display = "none"; }
   else {
     hlLine.style.display = "block";
     hlLine.style.top = (12 + (line - 1) * 24) + "px";
-    hlLine.classList.toggle("err", !!isErr);
-    // 讓目前這一行留在畫面裡
+    hlLine.classList.toggle("err", edErr);
     const top = 12 + (line - 1) * 24, h = ta.clientHeight;
     if (top < ta.scrollTop + 8 || top + 24 > ta.scrollTop + h - 8) {
       ta.scrollTop = Math.max(0, top - h / 3);
@@ -254,7 +367,7 @@ function onCodeInput() {
   if (run && !codeDirty) {
     codeDirty = true;
     setEditorLine(null);
-    hint("程式改過了，再按一次「執行程式」看看新的結果。", true);
+    hint("程式改過了，再按一次「起飛！執行程式」看看新的結果。", true);
   }
 }
 
@@ -292,18 +405,16 @@ ta.addEventListener("paste", (e) => {
   }
 });
 
-// 範例、開啟、下載、清空
 const exSel = $("exampleSel");
 EXAMPLES.forEach(([name], i) => { const o = document.createElement("option"); o.value = i; o.textContent = name; exSel.appendChild(o); });
 exSel.addEventListener("change", () => {
   if (exSel.value === "") return;
   const [name, code] = EXAMPLES[+exSel.value];
-  if (ta.value.trim() && ta.value.trim() !== code.trim() && !confirmReplace()) { exSel.value = ""; return; }
+  if (ta.value.trim() && ta.value.trim() !== code.trim() && !window.confirm("要用範例取代目前的程式嗎？（目前的程式會不見）")) { exSel.value = ""; return; }
   setCode(code);
   exSel.value = "";
-  hint("已載入範例「" + name + "」，按「執行程式」試試看！");
+  hint("已載入範例「" + name + "」，按「起飛！執行程式」試試看！");
 });
-function confirmReplace() { return window.confirm("要用範例取代目前的程式嗎？（目前的程式會不見）"); }
 function setCode(code) {
   ta.value = code;
   ta.scrollTop = 0;
@@ -337,6 +448,7 @@ $("clearBtn").addEventListener("click", () => {
    ========================================================= */
 let worker = null, workerReady = false, runId = 0, runTimer = null;
 const RUN_TIMEOUT = 6000;
+const RUN_LABEL = "起飛！執行程式";
 function setPyStatus(kind, text) { $("pyDot").className = "dot " + kind; $("pyText").textContent = text; }
 function startWorker() {
   workerReady = false;
@@ -349,7 +461,7 @@ function startWorker() {
     if (m.type === "ready") {
       workerReady = true;
       $("runBtn").disabled = false;
-      $("runText").textContent = "執行程式";
+      $("runText").textContent = RUN_LABEL;
       setPyStatus("ok", m.where === "cdn" ? "Python 準備好了（線上版）" : "Python 準備好了");
     } else if (m.type === "fatal") {
       setPyStatus("bad", "Python 載入失敗");
@@ -359,7 +471,7 @@ function startWorker() {
       if (m.id !== runId) return;
       clearTimeout(runTimer);
       $("runBtn").disabled = false;
-      $("runText").textContent = "執行程式";
+      $("runText").textContent = RUN_LABEL;
       loadRun(m.result);
     }
   };
@@ -372,6 +484,7 @@ function startWorker() {
 
 function doRun() {
   if (!workerReady) return;
+  Sound.ensure();
   const cleaned = cleanCode(ta.value);
   if (cleaned !== ta.value) { setCode(cleaned); hint("已自動整理程式（拿掉 ``` 標記、Tab 換成空白）。"); }
   if (!ta.value.trim()) { hint("先貼上或寫一段程式喔！"); return; }
@@ -405,117 +518,309 @@ const renderer = new THREE.WebGLRenderer({ antialias: true });
 renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
 viewport.prepend(renderer.domElement);
 const scene = new THREE.Scene();
-scene.background = new THREE.Color(0xcfe6fb);
-scene.fog = new THREE.Fog(0xcfe6fb, 18, 45);
-const camera = new THREE.PerspectiveCamera(50, 1, 0.05, 200);
-
-scene.add(new THREE.HemisphereLight(0xffffff, 0xa8bccf, 1.6));
-const sun = new THREE.DirectionalLight(0xffffff, 1.6);
-sun.position.set(-4, 8, 5);
-scene.add(sun);
-
-const S = (x, y, z) => new THREE.Vector3(x / 100, z / 100, -y / 100); // 模擬座標(公分) → 3D(公尺)
+const camera = new THREE.PerspectiveCamera(50, 1, 0.05, 300);
 
 function canvasTex(draw, w, h) {
   const c = document.createElement("canvas");
   c.width = w; c.height = h;
   draw(c.getContext("2d"), w, h);
   const t = new THREE.CanvasTexture(c);
+  t.colorSpace = THREE.SRGBColorSpace;
   t.anisotropy = 4;
   return t;
 }
+const FONT = getComputedStyle(document.body).fontFamily;
+const S = (x, y, z) => new THREE.Vector3(x / 100, z / 100, -y / 100); // 模擬座標(公分) → 3D(公尺)
+const lambert = (color, flat = false) => new THREE.MeshLambertMaterial({ color, flatShading: flat });
+
+// 天空
+scene.background = canvasTex((g, w, h) => {
+  const gr = g.createLinearGradient(0, 0, 0, h);
+  gr.addColorStop(0, "#4fb0ff"); gr.addColorStop(0.5, "#9ad6ff"); gr.addColorStop(1, "#e4f6ff");
+  g.fillStyle = gr; g.fillRect(0, 0, w, h);
+}, 8, 256);
+scene.fog = new THREE.Fog(0xdcf1ff, 22, 70);
+scene.add(new THREE.HemisphereLight(0xffffff, 0x9fd18b, 1.7));
+const sunLight = new THREE.DirectionalLight(0xfff6e0, 1.9);
+sunLight.position.set(-5, 10, 6);
+scene.add(sunLight);
+
+// 太陽
+{
+  const sun = new THREE.Mesh(new THREE.SphereGeometry(2.6, 24, 16), new THREE.MeshBasicMaterial({ color: 0xffe36b, fog: false }));
+  sun.position.set(-30, 24, -42); scene.add(sun);
+  const halo = new THREE.Sprite(new THREE.SpriteMaterial({ fog: false, transparent: true, depthWrite: false, map: canvasTex((g, w, h) => {
+    const gr = g.createRadialGradient(w / 2, h / 2, 0, w / 2, h / 2, w / 2);
+    gr.addColorStop(0, "rgba(255,240,170,.9)"); gr.addColorStop(1, "rgba(255,240,170,0)");
+    g.fillStyle = gr; g.fillRect(0, 0, w, h);
+  }, 128, 128) }));
+  halo.scale.set(16, 16, 1); halo.position.copy(sun.position); scene.add(halo);
+}
+
+// 雲
+const clouds = [];
+{
+  const mat = new THREE.MeshLambertMaterial({ color: 0xffffff, emissive: 0x99aabb, emissiveIntensity: 0.25 });
+  for (let i = 0; i < 9; i++) {
+    const c = new THREE.Group();
+    const n = 4 + Math.floor(rand() * 3);
+    for (let k = 0; k < n; k++) {
+      const s = new THREE.Mesh(new THREE.IcosahedronGeometry(0.9 + rand() * 0.8, 2), mat);
+      s.position.set(k * 1.1 - n * 0.55, rand() * 0.5, (rand() - 0.5) * 0.9);
+      s.scale.y = 0.75;
+      c.add(s);
+    }
+    const ang = (i / 9) * Math.PI * 2 + rand() * 0.4, r = 18 + rand() * 16;
+    c.position.set(Math.cos(ang) * r, 9 + rand() * 6, Math.sin(ang) * r);
+    c.scale.setScalar(1 + rand() * 0.8);
+    scene.add(c);
+    clouds.push(c);
+  }
+}
+
+// 草地
+{
+  const tex = canvasTex((g, w, h) => {
+    g.fillStyle = "#8ed96a"; g.fillRect(0, 0, w, h);
+    for (let i = 0; i < 260; i++) {
+      g.fillStyle = rand() < 0.5 ? "rgba(70,170,70,.25)" : "rgba(190,240,140,.35)";
+      g.beginPath(); g.arc(rand() * w, rand() * h, 3 + rand() * 9, 0, Math.PI * 2); g.fill();
+    }
+  }, 256, 256);
+  tex.wrapS = tex.wrapT = THREE.RepeatWrapping; tex.repeat.set(30, 30);
+  const grass = new THREE.Mesh(new THREE.CircleGeometry(90, 64), new THREE.MeshLambertMaterial({ map: tex }));
+  grass.rotation.x = -Math.PI / 2; grass.position.y = -0.01; scene.add(grass);
+}
+
+// 彩色拼接地墊（每塊 1 公尺）
+{
+  const PAL = ["#fff1c2", "#d6eeff", "#ffe0ea", "#daf5d3", "#efe4ff"];
+  const tex = canvasTex((g, w, h) => {
+    const u = w / 10;
+    for (let i = 0; i < 10; i++) for (let j = 0; j < 10; j++) {
+      g.fillStyle = PAL[(i * 2 + j * 3) % PAL.length];
+      g.fillRect(i * u, j * u, u, u);
+    }
+    g.strokeStyle = "rgba(60,90,120,.10)"; g.lineWidth = 2; g.setLineDash([8, 8]);
+    for (let i = 0; i < 10; i++) {
+      g.beginPath(); g.moveTo(i * u + u / 2, 0); g.lineTo(i * u + u / 2, h); g.stroke();
+      g.beginPath(); g.moveTo(0, i * u + u / 2); g.lineTo(w, i * u + u / 2); g.stroke();
+    }
+    g.setLineDash([]); g.strokeStyle = "rgba(255,255,255,.95)"; g.lineWidth = 5;
+    for (let i = 0; i <= 10; i++) {
+      g.beginPath(); g.moveTo(i * u, 0); g.lineTo(i * u, h); g.stroke();
+      g.beginPath(); g.moveTo(0, i * u); g.lineTo(w, i * u); g.stroke();
+    }
+  }, 1024, 1024);
+  const mat = new THREE.Mesh(new THREE.PlaneGeometry(10, 10), new THREE.MeshLambertMaterial({ map: tex }));
+  mat.rotation.x = -Math.PI / 2; mat.position.y = 0.002; scene.add(mat);
+  const edgeMat = lambert(0x3fa9f5);
+  for (const [w, d, x, z] of [[10.3, 0.15, 0, 5.07], [10.3, 0.15, 0, -5.07], [0.15, 10, 5.07, 0], [0.15, 10, -5.07, 0]]) {
+    const e = new THREE.Mesh(new THREE.BoxGeometry(w, 0.05, d), edgeMat);
+    e.position.set(x, 0.025, z); scene.add(e);
+  }
+}
+
+// 場邊彩旗
+{
+  const COLS = [0xff5d5d, 0xffbf1f, 0x3fa9f5, 0x4cd964, 0xff6fa1, 0xa66cff];
+  const E = 5.5, H = 1.0;
+  const postGeo = new THREE.CylinderGeometry(0.035, 0.035, H, 10);
+  const capGeo = new THREE.SphereGeometry(0.07, 14, 10);
+  const flagGeo = new THREE.BufferGeometry();
+  flagGeo.setAttribute("position", new THREE.Float32BufferAttribute([-0.1, 0, 0, 0.1, 0, 0, 0, -0.2, 0], 3));
+  flagGeo.computeVertexNormals();
+  const flagMats = COLS.map((c) => new THREE.MeshLambertMaterial({ color: c, side: THREE.DoubleSide }));
+  const corners = [[-E, -E], [E, -E], [E, E], [-E, E]];
+  let ci = 0, fi = 0;
+  for (let s = 0; s < 4; s++) {
+    const [ax, az] = corners[s], [bx, bz] = corners[(s + 1) % 4];
+    const seg = 5;
+    for (let k = 0; k < seg; k++) {
+      const x0 = ax + (bx - ax) * k / seg, z0 = az + (bz - az) * k / seg;
+      const x1 = ax + (bx - ax) * (k + 1) / seg, z1 = az + (bz - az) * (k + 1) / seg;
+      const post = new THREE.Mesh(postGeo, lambert(0xffffff)); post.position.set(x0, H / 2, z0); scene.add(post);
+      const cap = new THREE.Mesh(capGeo, lambert(COLS[ci++ % COLS.length])); cap.position.set(x0, H + 0.04, z0); scene.add(cap);
+      const pts = [];
+      for (let q = 0; q <= 12; q++) {
+        const u = q / 12;
+        pts.push(new THREE.Vector3(x0 + (x1 - x0) * u, H - 0.02 - Math.sin(u * Math.PI) * 0.15, z0 + (z1 - z0) * u));
+      }
+      scene.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(pts), new THREE.LineBasicMaterial({ color: 0x8a97a8 })));
+      const nf = 6;
+      for (let q = 1; q < nf; q++) {
+        const u = q / nf;
+        const f = new THREE.Mesh(flagGeo, flagMats[fi++ % flagMats.length]);
+        f.position.set(x0 + (x1 - x0) * u, H - 0.02 - Math.sin(u * Math.PI) * 0.15, z0 + (z1 - z0) * u);
+        f.rotation.y = -Math.atan2(z1 - z0, x1 - x0);
+        scene.add(f);
+      }
+    }
+  }
+}
+
+// 樹與花
+{
+  const trunkMat = lambert(0xa0724a);
+  const greens = [0x4cc35c, 0x37a94f, 0x6fd36a, 0x2f9d58].map((c) => lambert(c, true));
+  for (let i = 0; i < 30; i++) {
+    const ang = rand() * Math.PI * 2, r = 8.5 + rand() * 9;
+    const x = Math.cos(ang) * r, z = Math.sin(ang) * r;
+    const t = new THREE.Group();
+    const trunk = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.14, 0.9, 8), trunkMat);
+    trunk.position.y = 0.45; t.add(trunk);
+    if (rand() < 0.45) {
+      for (let k = 0; k < 2; k++) {
+        const cone = new THREE.Mesh(new THREE.ConeGeometry(0.75 - k * 0.2, 1.1, 8), greens[(i + k) % 4]);
+        cone.position.y = 1.2 + k * 0.6; t.add(cone);
+      }
+    } else {
+      for (let k = 0; k < 3; k++) {
+        const b = new THREE.Mesh(new THREE.IcosahedronGeometry(0.55 + rand() * 0.25, 1), greens[(i + k) % 4]);
+        b.position.set((rand() - 0.5) * 0.6, 1.3 + rand() * 0.5, (rand() - 0.5) * 0.6); t.add(b);
+      }
+    }
+    t.position.set(x, 0, z);
+    t.scale.setScalar(0.9 + rand() * 0.7);
+    scene.add(t);
+  }
+  const petal = [0xff6fa1, 0xffd23f, 0xffffff, 0xa66cff, 0xff8a1f].map((c) => lambert(c));
+  const fGeo = new THREE.SphereGeometry(0.07, 8, 6);
+  for (let i = 0; i < 110; i++) {
+    const ang = rand() * Math.PI * 2, r = 6.2 + rand() * 9;
+    const f = new THREE.Mesh(fGeo, petal[i % petal.length]);
+    f.position.set(Math.cos(ang) * r, 0.06, Math.sin(ang) * r);
+    scene.add(f);
+  }
+}
+
+// 地上的字
 function flatLabel(text, x, z, size = 0.32, color = "#5b6e82", rot = 0) {
   const tex = canvasTex((g, w, h) => {
-    g.font = "bold 92px " + getComputedStyle(document.body).fontFamily;
+    g.font = "bold 92px " + FONT;
     g.fillStyle = color; g.textAlign = "center"; g.textBaseline = "middle";
     g.fillText(text, w / 2, h / 2);
   }, 512, 128);
   const m = new THREE.Mesh(new THREE.PlaneGeometry(size * 4, size), new THREE.MeshBasicMaterial({ map: tex, transparent: true, depthWrite: false }));
   m.rotation.x = -Math.PI / 2;
   m.rotation.z = rot;
-  m.position.set(x, 0.004, z);
+  m.position.set(x, 0.006, z);
   return m;
 }
-
-// 地面
-const outer = new THREE.Mesh(new THREE.PlaneGeometry(80, 80), new THREE.MeshLambertMaterial({ color: 0xd6e4cc }));
-outer.rotation.x = -Math.PI / 2; outer.position.y = -0.002; scene.add(outer);
-const floor = new THREE.Mesh(new THREE.PlaneGeometry(10, 10), new THREE.MeshLambertMaterial({ color: 0xf7f9fc }));
-floor.rotation.x = -Math.PI / 2; scene.add(floor);
-const g1 = new THREE.GridHelper(10, 20, 0xd5dee8, 0xe1e8ef); g1.position.y = 0.001; scene.add(g1);
-const g2 = new THREE.GridHelper(10, 10, 0xb9c6d4, 0xc3cfdc); g2.position.y = 0.0015; scene.add(g2);
-{
-  const pts = [[-5, -5], [5, -5], [5, 5], [-5, 5], [-5, -5]].map(([a, b]) => new THREE.Vector3(a, 0.003, b));
-  scene.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(pts), new THREE.LineBasicMaterial({ color: 0x7d90a5 })));
+function badgeSprite(text, bg, size = 0.3) {
+  const tex = canvasTex((g, w, h) => {
+    g.fillStyle = bg; g.beginPath(); g.arc(w / 2, h / 2, w / 2 - 6, 0, Math.PI * 2); g.fill();
+    g.lineWidth = 10; g.strokeStyle = "#fff"; g.stroke();
+    g.fillStyle = "#fff"; g.font = "bold 72px " + FONT; g.textAlign = "center"; g.textBaseline = "middle";
+    g.fillText(text, w / 2, h / 2 + 4);
+  }, 128, 128);
+  const s = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, transparent: true }));
+  s.scale.set(size, size, 1);
+  return s;
 }
-// 起飛點 H
+
+// 起飛點 H、前方箭頭、距離
 {
   const tex = canvasTex((g, w, h) => {
-    g.fillStyle = "#1d2b3a"; g.beginPath(); g.arc(w / 2, h / 2, w / 2 - 4, 0, Math.PI * 2); g.fill();
-    g.strokeStyle = "#ffffff"; g.lineWidth = 8; g.beginPath(); g.arc(w / 2, h / 2, w / 2 - 20, 0, Math.PI * 2); g.stroke();
+    g.fillStyle = "#23324a"; g.beginPath(); g.arc(w / 2, h / 2, w / 2 - 4, 0, Math.PI * 2); g.fill();
+    g.strokeStyle = "#ffd23f"; g.lineWidth = 10; g.beginPath(); g.arc(w / 2, h / 2, w / 2 - 22, 0, Math.PI * 2); g.stroke();
     g.fillStyle = "#ffffff"; g.font = "bold 130px sans-serif"; g.textAlign = "center"; g.textBaseline = "middle";
     g.fillText("H", w / 2, h / 2 + 8);
   }, 256, 256);
-  const pad = new THREE.Mesh(new THREE.CircleGeometry(0.28, 48), new THREE.MeshBasicMaterial({ map: tex, transparent: true }));
-  pad.rotation.x = -Math.PI / 2; pad.rotation.z = -Math.PI / 2; pad.position.y = 0.005; scene.add(pad);
-}
-// 前方箭頭與距離標示
-{
+  const pad = new THREE.Mesh(new THREE.CircleGeometry(0.3, 48), new THREE.MeshBasicMaterial({ map: tex, transparent: true }));
+  pad.rotation.x = -Math.PI / 2; pad.rotation.z = -Math.PI / 2; pad.position.y = 0.007; scene.add(pad);
   const sh = new THREE.Shape();
-  sh.moveTo(0.38, 0.05); sh.lineTo(0.8, 0.05); sh.lineTo(0.8, 0.13); sh.lineTo(1.0, 0); sh.lineTo(0.8, -0.13); sh.lineTo(0.8, -0.05); sh.lineTo(0.38, -0.05);
-  const arrow = new THREE.Mesh(new THREE.ShapeGeometry(sh), new THREE.MeshBasicMaterial({ color: 0xff7a1a }));
-  arrow.rotation.x = -Math.PI / 2; arrow.position.y = 0.006; scene.add(arrow);
-  scene.add(flatLabel("前方", 1.3, 0.0, 0.26, "#e0620a", -Math.PI / 2));
-  for (let i = 1; i <= 4; i++) scene.add(flatLabel("前 " + i + " m", i, 0.5, 0.2, "#6f8297"));
+  sh.moveTo(0.4, 0.06); sh.lineTo(0.8, 0.06); sh.lineTo(0.8, 0.15); sh.lineTo(1.02, 0); sh.lineTo(0.8, -0.15); sh.lineTo(0.8, -0.06); sh.lineTo(0.4, -0.06);
+  const arrow = new THREE.Mesh(new THREE.ShapeGeometry(sh), new THREE.MeshBasicMaterial({ color: 0xff8a1f }));
+  arrow.rotation.x = -Math.PI / 2; arrow.position.y = 0.008; scene.add(arrow);
+  scene.add(flatLabel("前方", 1.32, 0.0, 0.26, "#e46f05", -Math.PI / 2));
+  for (let i = 1; i <= 4; i++) scene.add(flatLabel("前 " + i + " m", i, 0.5, 0.18, "#6f8297"));
   for (let i = 1; i <= 4; i++) {
-    scene.add(flatLabel("左 " + i + " m", -0.6, -i, 0.2, "#6f8297"));
-    scene.add(flatLabel("右 " + i + " m", -0.6, i, 0.2, "#6f8297"));
+    scene.add(flatLabel("左 " + i + " m", -0.6, -i, 0.18, "#6f8297"));
+    scene.add(flatLabel("右 " + i + " m", -0.6, i, 0.18, "#6f8297"));
   }
 }
 
-// Tello 模型
+// Tello（加上大眼睛的可愛版）
 function makeDrone() {
   const root = new THREE.Group();
   const tilt = new THREE.Group(); root.add(tilt);
   const body = new THREE.Group(); tilt.add(body);
-  body.scale.setScalar(2.2);
-  const white = new THREE.MeshStandardMaterial({ color: 0xf4f6f8, roughness: 0.45 });
+  body.scale.setScalar(2.4);
+  const white = new THREE.MeshStandardMaterial({ color: 0xf7f9fb, roughness: 0.4 });
   const dark = new THREE.MeshStandardMaterial({ color: 0x2c3540, roughness: 0.6 });
-  const grey = new THREE.MeshStandardMaterial({ color: 0x9aa6b3, roughness: 0.5 });
-  const orange = new THREE.MeshStandardMaterial({ color: 0xff7a1a, roughness: 0.5 });
+  const grey = new THREE.MeshStandardMaterial({ color: 0xb4bfcb, roughness: 0.5 });
+  const orange = new THREE.MeshStandardMaterial({ color: 0xff8a1f, roughness: 0.5 });
+  const blue = new THREE.MeshStandardMaterial({ color: 0x3fa9f5, roughness: 0.5 });
   const add = (geo, mat, x, y, z) => { const m = new THREE.Mesh(geo, mat); m.position.set(x, y, z); body.add(m); return m; };
-  add(new THREE.BoxGeometry(0.075, 0.028, 0.055), white, 0, 0.012, 0);
-  add(new THREE.BoxGeometry(0.06, 0.008, 0.045), grey, -0.004, 0.03, 0);
-  add(new THREE.BoxGeometry(0.004, 0.012, 0.04), orange, 0.038, 0.014, 0);
-  const cam = add(new THREE.CylinderGeometry(0.008, 0.008, 0.008, 16), dark, 0.041, 0.012, 0);
-  cam.rotation.z = Math.PI / 2;
+  add(new THREE.BoxGeometry(0.075, 0.03, 0.058), white, 0, 0.013, 0);
+  add(new THREE.BoxGeometry(0.058, 0.009, 0.046), grey, -0.006, 0.031, 0);
+  // 大眼睛
+  for (const z of [0.014, -0.014]) {
+    const eye = add(new THREE.SphereGeometry(0.011, 16, 12), white, 0.036, 0.017, z);
+    eye.scale.x = 0.6;
+    add(new THREE.SphereGeometry(0.0062, 12, 10), dark, 0.0425, 0.017, z);
+    add(new THREE.SphereGeometry(0.0022, 8, 6), white, 0.046, 0.0195, z + 0.002);
+  }
   const props = [];
-  for (const [cx, cz] of [[0.045, 0.045], [0.045, -0.045], [-0.045, 0.045], [-0.045, -0.045]]) {
-    const arm = add(new THREE.BoxGeometry(0.05, 0.008, 0.01), white, cx / 2, 0.012, cz / 2);
+  for (const [cx, cz] of [[0.046, 0.046], [0.046, -0.046], [-0.046, 0.046], [-0.046, -0.046]]) {
+    const arm = add(new THREE.BoxGeometry(0.05, 0.008, 0.011), white, cx / 2, 0.013, cz / 2);
     arm.rotation.y = Math.atan2(-cz, cx);
-    const guard = add(new THREE.TorusGeometry(0.031, 0.0035, 8, 32), cx > 0 ? grey : dark, cx, 0.014, cz);
+    const guard = add(new THREE.TorusGeometry(0.031, 0.0045, 8, 32), cx > 0 ? orange : blue, cx, 0.015, cz);
     guard.rotation.x = Math.PI / 2;
-    add(new THREE.CylinderGeometry(0.006, 0.006, 0.014, 12), dark, cx, 0.014, cz);
-    const prop = new THREE.Group(); prop.position.set(cx, 0.023, cz); body.add(prop);
-    const bladeMat = new THREE.MeshStandardMaterial({ color: 0xe8ecf0, roughness: 0.4, transparent: true, opacity: 0.9 });
-    const b1 = new THREE.Mesh(new THREE.BoxGeometry(0.052, 0.0015, 0.007), bladeMat); prop.add(b1);
+    add(new THREE.CylinderGeometry(0.006, 0.006, 0.014, 12), dark, cx, 0.015, cz);
+    const prop = new THREE.Group(); prop.position.set(cx, 0.024, cz); body.add(prop);
+    const bladeMat = new THREE.MeshStandardMaterial({ color: 0xeef2f5, roughness: 0.4, transparent: true, opacity: 0.9 });
+    prop.add(new THREE.Mesh(new THREE.BoxGeometry(0.052, 0.0015, 0.008), bladeMat));
     props.push(prop);
   }
   return { root, tilt, props };
 }
 const drone = makeDrone();
 scene.add(drone.root);
-const shadow = new THREE.Mesh(new THREE.CircleGeometry(0.16, 32), new THREE.MeshBasicMaterial({ color: 0x1d2b3a, transparent: true, opacity: 0.25, depthWrite: false }));
-shadow.rotation.x = -Math.PI / 2; shadow.position.y = 0.007; scene.add(shadow);
+const shadow = new THREE.Mesh(new THREE.CircleGeometry(0.17, 32), new THREE.MeshBasicMaterial({ color: 0x23324a, transparent: true, opacity: 0.25, depthWrite: false }));
+shadow.rotation.x = -Math.PI / 2; shadow.position.y = 0.009; scene.add(shadow);
 
-// 飛行軌跡
+// 彩虹點點軌跡
 const TRAIL_MAX = 20000;
 const trailGeo = new THREE.BufferGeometry();
 trailGeo.setAttribute("position", new THREE.BufferAttribute(new Float32Array(TRAIL_MAX * 3), 3));
+trailGeo.setAttribute("color", new THREE.BufferAttribute(new Float32Array(TRAIL_MAX * 3), 3));
 trailGeo.setDrawRange(0, 0);
-const trail = new THREE.Line(trailGeo, new THREE.LineBasicMaterial({ color: 0xff7a1a }));
+const dotTex = canvasTex((g, w, h) => {
+  const gr = g.createRadialGradient(w / 2, h / 2, 0, w / 2, h / 2, w / 2);
+  gr.addColorStop(0, "#fff"); gr.addColorStop(0.6, "#fff"); gr.addColorStop(1, "rgba(255,255,255,0)");
+  g.fillStyle = gr; g.fillRect(0, 0, w, h);
+}, 64, 64);
+const trail = new THREE.Points(trailGeo, new THREE.PointsMaterial({ size: 0.06, map: dotTex, vertexColors: true, transparent: true, depthWrite: false, alphaTest: 0.2 }));
 trail.frustumCulled = false;
 scene.add(trail);
+
+// 彩帶
+const confetti = [];
+const confGeo = new THREE.PlaneGeometry(0.07, 0.035);
+const confMats = [0xff5d5d, 0xffbf1f, 0x3fa9f5, 0x4cd964, 0xff6fa1, 0xa66cff].map((c) => new THREE.MeshBasicMaterial({ color: c, side: THREE.DoubleSide }));
+function burst(pos, n = 140, power = 1) {
+  for (let i = 0; i < n; i++) {
+    const m = new THREE.Mesh(confGeo, confMats[i % confMats.length]);
+    m.position.copy(pos);
+    const a = Math.random() * Math.PI * 2, up = 2 + Math.random() * 2.5;
+    m.userData = { v: new THREE.Vector3(Math.cos(a) * (0.5 + Math.random() * 1.6) * power, up * power, Math.sin(a) * (0.5 + Math.random() * 1.6) * power), spin: new THREE.Vector3(Math.random() * 8, Math.random() * 8, Math.random() * 8), life: 3 + Math.random() };
+    scene.add(m);
+    confetti.push(m);
+  }
+}
+function updateConfetti(dt) {
+  for (let i = confetti.length - 1; i >= 0; i--) {
+    const m = confetti[i], u = m.userData;
+    u.v.y -= 3.2 * dt; u.v.multiplyScalar(1 - 1.2 * dt);
+    m.position.addScaledVector(u.v, dt);
+    m.rotation.x += u.spin.x * dt; m.rotation.y += u.spin.y * dt; m.rotation.z += u.spin.z * dt;
+    if (m.position.y < 0.01) { m.position.y = 0.01; u.v.set(0, 0, 0); u.spin.set(0, 0, 0); }
+    u.life -= dt;
+    if (u.life <= 0) { scene.remove(m); confetti.splice(i, 1); }
+  }
+}
 
 // 任務物件
 const missionGroup = new THREE.Group();
@@ -526,37 +831,45 @@ function buildMissionScene(key) {
   ringMeshes = [];
   if (key === "pad") {
     const tex = canvasTex((g, w, h) => {
-      g.fillStyle = "#ffcf33"; g.beginPath(); g.arc(w / 2, h / 2, w / 2 - 2, 0, Math.PI * 2); g.fill();
-      g.strokeStyle = "#1d2b3a"; g.lineWidth = 10;
-      for (const r of [0.42, 0.22]) { g.beginPath(); g.arc(w / 2, h / 2, w * r, 0, Math.PI * 2); g.stroke(); }
-      g.fillStyle = "#1d2b3a"; g.beginPath(); g.arc(w / 2, h / 2, 12, 0, Math.PI * 2); g.fill();
+      g.fillStyle = "#ffd23f"; g.beginPath(); g.arc(w / 2, h / 2, w / 2 - 2, 0, Math.PI * 2); g.fill();
+      g.strokeStyle = "#ff8a1f"; g.lineWidth = 14;
+      for (const r of [0.4, 0.22]) { g.beginPath(); g.arc(w / 2, h / 2, w * r, 0, Math.PI * 2); g.stroke(); }
+      g.fillStyle = "#ff5d5d"; g.beginPath(); g.arc(w / 2, h / 2, 16, 0, Math.PI * 2); g.fill();
     }, 256, 256);
     const m = new THREE.Mesh(new THREE.CircleGeometry(PAD.r / 100 * 1.25, 48), new THREE.MeshBasicMaterial({ map: tex, transparent: true }));
-    m.rotation.x = -Math.PI / 2; m.position.copy(S(PAD.x, PAD.y, 0.6)); missionGroup.add(m);
+    m.rotation.x = -Math.PI / 2; m.position.copy(S(PAD.x, PAD.y, 0.8)); missionGroup.add(m);
+    const b = badgeSprite("🎯", "#ff8a1f", 0.5); b.position.copy(S(PAD.x, PAD.y, 70)); missionGroup.add(b);
   } else if (key === "rings") {
     RINGS.forEach((r, i) => {
-      const mat = new THREE.MeshStandardMaterial({ color: 0x2f7de1, roughness: 0.4 });
-      const ring = new THREE.Mesh(new THREE.TorusGeometry(0.5, 0.045, 14, 64), mat);
+      const mat = new THREE.MeshStandardMaterial({ color: r.color, roughness: 0.35, emissive: r.color, emissiveIntensity: 0.15 });
+      const ring = new THREE.Mesh(new THREE.TorusGeometry(0.5, 0.05, 16, 64), mat);
       ring.position.copy(S(r.x, r.y, r.z));
       if (r.axis === "x") ring.rotation.y = Math.PI / 2;
+      ring.userData = { base: r.color, pulse: 0 };
       missionGroup.add(ring);
-      const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.02, 0.02, (r.z - 50) / 100, 8), new THREE.MeshStandardMaterial({ color: 0x9aa6b3 }));
-      pole.position.copy(S(r.x, r.y, (r.z - 50) / 2));
+      const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.025, 0.025, (r.z - 55) / 100, 8), lambert(0xffffff));
+      pole.position.copy(S(r.x, r.y, (r.z - 55) / 2));
       missionGroup.add(pole);
-      const lab = flatLabel(["①", "②", "③"][i], 0, 0, 0.35, "#2f7de1");
-      lab.position.copy(S(r.x, r.y, 1)); lab.position.x += r.axis === "x" ? -0.3 : 0; lab.position.z += r.axis === "y" ? 0.3 : 0;
+      const base = new THREE.Mesh(new THREE.CylinderGeometry(0.15, 0.18, 0.06, 20), lambert(r.color));
+      base.position.copy(S(r.x, r.y, 3)); missionGroup.add(base);
+      const lab = badgeSprite(String(i + 1), "#" + r.color.toString(16).padStart(6, "0"));
+      lab.position.copy(S(r.x, r.y, r.z + 75));
       missionGroup.add(lab);
       ringMeshes.push(ring);
     });
   } else if (key === "pillar") {
-    const p = new THREE.Mesh(new THREE.CylinderGeometry(PILLAR.r / 100, PILLAR.r / 100, PILLAR.h / 100, 32),
-      new THREE.MeshStandardMaterial({ color: 0xe25555, roughness: 0.5 }));
+    const tex = canvasTex((g, w, h) => {
+      g.fillStyle = "#ffffff"; g.fillRect(0, 0, w, h);
+      g.fillStyle = "#ff5d5d";
+      for (let k = -h; k < w + h; k += 64) { g.beginPath(); g.moveTo(k, 0); g.lineTo(k + 32, 0); g.lineTo(k + 32 - h, h); g.lineTo(k - h, h); g.fill(); }
+    }, 256, 128);
+    tex.wrapS = tex.wrapT = THREE.RepeatWrapping; tex.repeat.set(2, 6);
+    const p = new THREE.Mesh(new THREE.CylinderGeometry(PILLAR.r / 100, PILLAR.r / 100, PILLAR.h / 100, 32), new THREE.MeshLambertMaterial({ map: tex }));
     p.position.copy(S(PILLAR.x, PILLAR.y, PILLAR.h / 2)); missionGroup.add(p);
-    for (let k = 0; k < 3; k++) {
-      const band = new THREE.Mesh(new THREE.CylinderGeometry(PILLAR.r / 100 + 0.002, PILLAR.r / 100 + 0.002, 0.18, 32),
-        new THREE.MeshStandardMaterial({ color: 0xffffff }));
-      band.position.copy(S(PILLAR.x, PILLAR.y, 50 + k * 100)); missionGroup.add(band);
-    }
+    const top = new THREE.Mesh(new THREE.SphereGeometry(0.32, 24, 16), lambert(0xff6fa1));
+    top.position.copy(S(PILLAR.x, PILLAR.y, PILLAR.h + 20)); missionGroup.add(top);
+    const swirl = new THREE.Mesh(new THREE.TorusGeometry(0.2, 0.05, 10, 32), lambert(0xffffff));
+    swirl.position.copy(S(PILLAR.x, PILLAR.y, PILLAR.h + 20)); swirl.rotation.y = Math.PI / 2; missionGroup.add(swirl);
   }
 }
 
@@ -564,9 +877,10 @@ function buildMissionScene(key) {
    相機控制（環繞／跟隨／俯視）
    ========================================================= */
 let camMode = "orbit";
-const orbit = { theta: 2.5, phi: 1.1, r: 3.3 };
+const orbit = { theta: 2.5, phi: 1.1, r: 3.4 };
 const camTarget = new THREE.Vector3(0.6, 0.3, 0);
 const camPos = new THREE.Vector3(-3, 2, 2);
+let shake = 0;
 function setCamMode(m) {
   camMode = m;
   for (const b of $("camBox").children) b.classList.toggle("on", b.dataset.cam === m);
@@ -621,7 +935,7 @@ resize();
 /* =========================================================
    時間軸：從 Python 結果算出每個時間點的位置
    ========================================================= */
-let run = null;          // 目前這次執行的結果
+let run = null;
 let playT = 0, playing = false, speed = +store.get("speed", "1") || 1;
 const DT = 0.05;
 
@@ -666,7 +980,63 @@ function poseAt(t) {
     const k = clamp((t - c.t) / 0.6, 0, 1);
     return { x: c.pose.x, y: c.pose.y, z: c.pose.z * (1 - k * k), yaw: c.pose.yaw + k * 40, motors: false, flip: null, fu: 0, crashed: k };
   }
-  return basePose(run, t);
+  return realism(run, t, basePose(run, t));
+}
+
+/* ---------- 真實飄動 ---------- */
+const REAL_LEVELS = {
+  stable: { h: 0, v: 0, tilt: 0, settle: 0, icon: "🧊", label: "穩定", tip: "穩定：完全照指令飛，沒有晃動（適合檢查路線）" },
+  normal: { h: 4, v: 2.5, tilt: 1, settle: 1, icon: "🍃", label: "一般", tip: "一般：像真的 Tello 一樣，懸停時會輕微飄動" },
+  windy: { h: 11, v: 4.5, tilt: 2.2, settle: 1.4, gust: true, icon: "🌬️", label: "有風", tip: "有風：陣風會把無人機吹偏，任務會變難喔！" },
+};
+const REAL_ORDER = ["stable", "normal", "windy"];
+let realKey = REAL_LEVELS[store.get("real", "normal")] ? store.get("real", "normal") : "normal";
+const nz = (t, s) => Math.sin(t * 0.83 + s) * 0.5 + Math.sin(t * 1.91 + s * 2.3) * 0.3 + Math.sin(t * 3.7 + s * 4.1) * 0.2;
+function gustAt(t) { const g = Math.max(0, Math.sin(t * 0.37 + 0.5)); return g * g; }
+
+function buildSettles(R) {
+  const L = REAL_LEVELS[realKey];
+  const out = [];
+  if (!L.settle) return out;
+  for (const e of R.motion) {
+    const a = e.kf[0], b = e.kf[e.kf.length - 1];
+    const tEnd = e.t0 + e.dur;
+    if (e.kind === "move" || e.kind === "curve") {
+      const p = e.kind === "curve" ? e.kf[Math.max(0, e.kf.length - 3)] : a;
+      const dx = b[1] - p[1], dy = b[2] - p[2], dz = b[3] - p[3];
+      const d = Math.hypot(dx, dy, dz) || 1;
+      const dist = Math.hypot(b[1] - a[1], b[2] - a[2], b[3] - a[3]);
+      const A = (1.5 + Math.min(6, dist * 0.035)) * L.settle;
+      out.push({ tEnd, ux: dx / d, uy: dy / d, uz: dz / d * 0.5, A, yawA: 0 });
+    } else if (e.kind === "rotate") {
+      const dyaw = b[4] - a[4];
+      out.push({ tEnd, ux: 0, uy: 0, uz: 0, A: 0, yawA: Math.sign(dyaw) * Math.min(5, 1 + Math.abs(dyaw) * 0.03) * L.settle });
+    }
+  }
+  return out;
+}
+
+function realism(R, t, p) {
+  const L = REAL_LEVELS[realKey];
+  if (!p.motors || p.z < 1 || !L.h) return p;
+  const fade = clamp(p.z / 35, 0, 1);
+  const ge = p.z < 45 ? 1.5 : 1;
+  let dx = nz(t, 1.3) * L.h * ge, dy = nz(t, 7.9) * L.h * ge, dz = nz(t * 1.3, 4.2) * L.v;
+  let dyaw = nz(t * 0.6, 2.2) * L.tilt * 1.2;
+  if (L.gust) { const g = gustAt(t); dx += g * 9; dy -= g * 5; dyaw += g * 2; }
+  const S0 = R.settles;
+  if (S0 && S0.length) {
+    let lo = 0, hi = S0.length - 1, ans = -1;
+    while (lo <= hi) { const mid = (lo + hi) >> 1; if (S0[mid].tEnd <= t) { ans = mid; lo = mid + 1; } else hi = mid - 1; }
+    if (ans >= 0) {
+      const s = S0[ans], d = t - s.tEnd;
+      if (d < 1.4) {
+        const f = Math.exp(-4.2 * d) * Math.sin(9 * d);
+        dx += s.ux * s.A * f; dy += s.uy * s.A * f; dz += s.uz * s.A * f; dyaw += s.yawA * f;
+      }
+    }
+  }
+  return { ...p, x: p.x + dx * fade, y: p.y + dy * fade, z: Math.max(p.z * 0.5, p.z + dz * fade), yaw: p.yaw + dyaw * fade };
 }
 
 function evaluateMission(key, R) {
@@ -726,50 +1096,54 @@ function evaluateMission(key, R) {
 
 function verdictFor(key, R) {
   const res = R.result, fin = res.final;
-  if (R.crash) return { cls: "bad", title: "撞機了！", text: R.crash.msg + " 調整一下距離或高度再試一次。" };
+  if (R.crash) return { cls: "bad", icon: "💥", sound: "fail", title: "撞機了！", text: R.crash.msg + " 調整一下距離或高度再試一次。" };
   if (res.error) {
-    return { cls: "bad", title: res.error.title || "程式出錯了",
-      text: (res.error.line ? "第 " + res.error.line + " 行出了問題。" : "") + "詳細說明在下方「飛行步驟」的紅色框。" };
+    return { cls: "bad", icon: "🛠️", sound: "error", title: res.error.title || "程式出錯了",
+      text: (res.error.line ? "第 " + res.error.line + " 行出了問題，" : "") + "看看畫面下方紅色的說明。" };
   }
   if (key === "free") {
     if (!res.events.length) return null;
-    return { cls: "neutral", title: "飛行結束", text: "總共 " + res.total.toFixed(1) + " 秒，剩下電量 " + fin.battery + "%。" + (res.warnings.length ? "有 " + res.warnings.length + " 個提醒，記得看一下。" : "") };
+    return { cls: "good", icon: "🎉", sound: "done", title: "飛行結束！", text: "總共飛了 " + res.total.toFixed(1) + " 秒，剩下電量 " + fin.battery + "%。" + (res.warnings.length ? "有 " + res.warnings.length + " 個黃色提醒，記得看一下喔。" : "") };
   }
-  if (!fin.ever_flew) return { cls: "bad", title: "還沒起飛喔", text: "要先 connect()、takeoff() 才能開始任務。" };
+  if (!fin.ever_flew) return { cls: "bad", icon: "🤔", sound: "fail", title: "還沒起飛喔", text: "要先 connect()、takeoff() 才能開始任務。" };
   const [x, y] = fin.pose;
   if (key === "pad") {
-    if (fin.flying) return { cls: "bad", title: "還沒降落", text: "要在停機坪上 land() 才算完成。" };
+    if (fin.flying) return { cls: "bad", icon: "🛬", sound: "fail", title: "還沒降落", text: "要在停機坪上 land() 才算完成。" };
     const d = Math.hypot(x - PAD.x, y - PAD.y);
-    if (d <= PAD.r) return { cls: "good", title: "任務完成！", text: "降落在距離停機坪中心 " + Math.round(d) + " 公分的地方，好準！" };
-    return { cls: "bad", title: "差一點！", text: "降落在離停機坪中心 " + Math.round(d) + " 公分的地方（要在 35 公分以內）。" };
+    if (d <= PAD.r) return { cls: "good", icon: "🏆", sound: "success", confetti: true, title: "任務完成！", text: "降落在距離停機坪中心 " + Math.round(d) + " 公分的地方，好準！" };
+    return { cls: "bad", icon: "😮", sound: "fail", title: "差一點！", text: "降落在離停機坪中心 " + Math.round(d) + " 公分的地方（要在 35 公分以內）。" };
   }
   if (key === "rings") {
-    if (R.mission.passed < RINGS.length) return { cls: "bad", title: "還差 " + (RINGS.length - R.mission.passed) + " 個圈", text: "目前照順序穿過 " + R.mission.passed + " 個圈。看看高度和左右位置對不對？" };
-    if (fin.flying) return { cls: "bad", title: "還沒降落", text: "三個圈都穿過了！最後記得 land()。" };
-    return { cls: "good", title: "任務完成！", text: "三個圈全部穿過，漂亮！" };
+    if (R.mission.passed < RINGS.length) return { cls: "bad", icon: "⭕", sound: "fail", title: "還差 " + (RINGS.length - R.mission.passed) + " 個圈", text: "目前照順序穿過 " + R.mission.passed + " 個圈。看看高度和左右位置對不對？" };
+    if (fin.flying) return { cls: "bad", icon: "🛬", sound: "fail", title: "還沒降落", text: "三個圈都穿過了！最後記得 land()。" };
+    return { cls: "good", icon: "🏆", sound: "success", confetti: true, title: "任務完成！", text: "三個圈全部穿過，太厲害了！" };
   }
   if (key === "pillar") {
     const a = Math.round(R.mission.angle);
-    if (a < 340) return { cls: "bad", title: "還沒繞完一圈", text: "目前繞了大約 " + a + " 度，要繞滿一整圈（360 度）。" };
-    if (fin.flying) return { cls: "bad", title: "還沒降落", text: "繞完一圈了！最後要回到 H 降落。" };
+    if (a < 340) return { cls: "bad", icon: "🍭", sound: "fail", title: "還沒繞完一圈", text: "目前繞了大約 " + a + " 度，要繞滿一整圈（360 度）。" };
+    if (fin.flying) return { cls: "bad", icon: "🛬", sound: "fail", title: "還沒降落", text: "繞完一圈了！最後要回到 H 降落。" };
     const d = Math.hypot(x, y);
-    if (d > 50) return { cls: "bad", title: "降落位置太遠", text: "繞完一圈了，但降落點離 H 有 " + Math.round(d) + " 公分（要在 50 公分以內）。" };
-    return { cls: "good", title: "任務完成！", text: "繞了 " + a + " 度，降落在離 H " + Math.round(d) + " 公分的地方！" };
+    if (d > 50) return { cls: "bad", icon: "😮", sound: "fail", title: "降落位置太遠", text: "繞完一圈了，但降落點離 H 有 " + Math.round(d) + " 公分（要在 50 公分以內）。" };
+    return { cls: "good", icon: "🏆", sound: "success", confetti: true, title: "任務完成！", text: "繞了 " + a + " 度，降落在離 H " + Math.round(d) + " 公分的地方！" };
   }
   return null;
 }
 
+function hsl(h, s, l) { const c = new THREE.Color(); c.setHSL(h, s, l); return c; }
+
 function loadRun(result) {
   const motion = result.events.filter((e) => e.dur > 0);
+  for (const m of confetti) scene.remove(m);
+  confetti.length = 0;
   const R = { result, motion, crash: null };
+  R.settles = buildSettles(R);
   run = R;
-  // 取樣（軌跡、任務判定、電量）
   const samples = [];
   let ft = 0;
   const total = result.total;
   for (let i = 0; ; i++) {
     const t = Math.min(i * DT, total);
-    const p = basePose(R, t);
+    const p = realism(R, t, basePose(R, t));
     if (i > 0 && samples[samples.length - 1].motors) ft += t - samples[samples.length - 1].t;
     samples.push({ t, x: p.x, y: p.y, z: p.z, yaw: p.yaw, motors: p.motors, ft });
     if (t >= total || samples.length >= TRAIL_MAX) break;
@@ -780,11 +1154,32 @@ function loadRun(result) {
   R.crash = R.mission.crash;
   R.endT = R.crash ? R.crash.t + 0.7 : total;
   // 軌跡
-  const pos = trailGeo.attributes.position.array;
-  samples.forEach((s, i) => { const v = S(s.x, s.y, s.z); pos[i * 3] = v.x; pos[i * 3 + 1] = v.y; pos[i * 3 + 2] = v.z; });
+  const pos = trailGeo.attributes.position.array, col = trailGeo.attributes.color.array;
+  samples.forEach((s, i) => {
+    const v = S(s.x, s.y, s.z);
+    pos[i * 3] = v.x; pos[i * 3 + 1] = v.y; pos[i * 3 + 2] = v.z;
+    const c = hsl((i * 0.0035) % 1, 0.85, 0.58);
+    col[i * 3] = c.r; col[i * 3 + 1] = c.g; col[i * 3 + 2] = c.b;
+  });
   trailGeo.attributes.position.needsUpdate = true;
+  trailGeo.attributes.color.needsUpdate = true;
   trailGeo.setDrawRange(0, 0);
+  // 音效提示點
+  const cues = [];
+  for (const e of result.events) {
+    if (e.kind === "flip") cues.push({ t: e.t0, type: "flip" });
+    else if (e.kind === "takeoff") cues.push({ t: e.t0, type: "takeoff" });
+    else if (e.kind === "print") cues.push({ t: e.t0, type: "ding" });
+  }
+  for (const w of result.warnings) cues.push({ t: w.t, type: "warn" });
+  for (const m of R.mission.marks) cues.push({ t: m.t, type: "ring", idx: m.idx });
+  if (R.crash) cues.push({ t: R.crash.t, type: "crash" });
+  cues.sort((a, b) => a.t - b.t);
+  R.cues = cues;
+  R.cueIdx = 0;
   R.verdict = verdictFor(missionKey, R);
+  R.prints = result.events.filter((e) => e.kind === "print");
+  R.steps = result.events.filter((e) => e.kind !== "print");
   codeDirty = false;
   hint("");
   buildLog(R);
@@ -792,13 +1187,33 @@ function loadRun(result) {
   $("scrub").max = Math.max(0.01, R.endT);
   playT = 0;
   bannerShown = false;
+  capKeys = {};
   playing = R.endT > 0;
   if (!playing) finish();
   updateFrame(true);
 }
 
+function resetCues() {
+  if (!run) return;
+  run.cueIdx = run.cues.findIndex((c) => c.t > playT + 1e-6);
+  if (run.cueIdx < 0) run.cueIdx = run.cues.length;
+}
+function fireCues(t) {
+  if (!run) return;
+  while (run.cueIdx < run.cues.length && run.cues[run.cueIdx].t <= t + 1e-6) {
+    const c = run.cues[run.cueIdx++];
+    if (c.type === "ring") {
+      Sound.sfx.ring();
+      const ring = ringMeshes[c.idx];
+      if (ring) { ring.userData.pulse = 1; burst(ring.position, 40, 0.5); }
+    } else if (c.type === "crash") {
+      Sound.sfx.crash(); shake = 0.5;
+    } else if (Sound.sfx[c.type]) Sound.sfx[c.type]();
+  }
+}
+
 /* =========================================================
-   飛行步驟清單
+   飛行步驟（右側抽屜）與字幕
    ========================================================= */
 let logItems = [];
 function buildLog(R) {
@@ -815,68 +1230,124 @@ function buildLog(R) {
   if (res.error) items.push({ t: res.total, kind: "err", e: res.error });
   if (!items.length) {
     log.innerHTML = '<div class="log-empty">程式執行完了，但 Tello 沒有收到任何指令。</div>';
+    $("logSub").textContent = "沒有步驟";
     return;
   }
   for (const it of items) {
-    let el;
+    let el = document.createElement("div");
     if (it.kind === "ev") {
       const e = it.ev;
-      el = document.createElement("div");
       el.className = "row" + (e.kind === "print" ? " print" : "") + (["info", "hover", "wait", "connect"].includes(e.kind) ? " dim" : "");
-      el.innerHTML = `<span class="t">${fmtTime(e.t0)}</span><span class="ln">${e.line ? "第 " + e.line + " 行" : ""}</span><span class="msg">${esc(e.label)}</span>`;
+      el.innerHTML = `<span class="t">${fmtTime(e.t0)}</span><span class="msg">${esc(e.label)}${e.line ? `<small>第 ${e.line} 行</small>` : ""}</span>`;
       el.addEventListener("click", () => seek(e.t0 + 0.001, true));
-      it.line = e.line;
     } else if (it.kind === "warn") {
-      el = document.createElement("div");
       el.className = "note warn";
-      el.innerHTML = `<div class="h">提醒</div>${esc(it.w.msg)}${it.w.line ? `<div class="where">第 ${it.w.line} 行</div>` : ""}`;
+      el.innerHTML = `<div class="h">⚠️ 提醒</div>${esc(it.w.msg)}${it.w.line ? `<div class="where">第 ${it.w.line} 行</div>` : ""}`;
     } else if (it.kind === "crash") {
-      el = document.createElement("div");
       el.className = "note err";
-      el.innerHTML = `<div class="h">撞機了！</div>${esc(R.crash.msg)}<div class="where">發生在 ${fmtTime(R.crash.t)}</div>`;
+      el.innerHTML = `<div class="h">💥 撞機了！</div>${esc(R.crash.msg)}<div class="where">發生在 ${fmtTime(R.crash.t)}</div>`;
     } else {
       const e = it.e;
-      el = document.createElement("div");
       el.className = "note err";
       el.innerHTML = `<div class="h">${esc(e.title || "錯誤")}${e.line ? "（第 " + e.line + " 行）" : ""}</div>${esc(e.msg)}${e.hint ? `<div style="margin-top:4px">💡 ${esc(e.hint)}</div>` : ""}`;
-      it.line = e.line;
       el.addEventListener("click", () => { if (e.line) setEditorLine(e.line, true); });
     }
     it.el = el;
     log.appendChild(el);
     logItems.push(it);
   }
-  $("logSub").textContent = res.events.length + " 個步驟 · 點一下可以跳到那個時間";
+  $("logSub").textContent = res.events.length + " 個步驟・點一下可以跳到那個時間";
+  lastCur = -2;
+}
+
+let drawerOpen = false;
+function setDrawer(open) {
+  drawerOpen = open;
+  $("drawer").classList.toggle("open", open);
+  lastCur = -2;
+  if (open) updateSteps(playT, true);
+}
+$("stepsBtn").addEventListener("click", () => setDrawer(!drawerOpen));
+$("drawerClose").addEventListener("click", () => setDrawer(false));
+
+let capKeys = {};
+function setCap(id, key, html) {
+  if (capKeys[id] === key) return;
+  capKeys[id] = key;
+  const el = $(id);
+  if (key === null) { el.hidden = true; return; }
+  el.innerHTML = html;
+  el.hidden = false;
+  el.style.animation = "none"; void el.offsetWidth; el.style.animation = "";
+}
+
+function lastBefore(list, t, getT) {
+  let lo = 0, hi = list.length - 1, ans = -1;
+  while (lo <= hi) { const mid = (lo + hi) >> 1; if (getT(list[mid]) <= t + 1e-6) { ans = mid; lo = mid + 1; } else hi = mid - 1; }
+  return ans;
 }
 
 let lastCur = -2;
-function updateLog(t) {
-  if (!logItems.length) return;
-  let cur = -1;
-  for (let i = 0; i < logItems.length; i++) {
-    const it = logItems[i];
-    if (it.kind === "ev" && it.t <= t + 1e-6) cur = i;
+function updateSteps(t, force) {
+  if (!run) {
+    setCap("capStep", null); setCap("capSay", null); setCap("capWarn", null); setCap("capErr", null);
+    return;
   }
-  const doneAll = run && t >= run.endT - 1e-6;
+  const res = run.result;
+  const doneAll = t >= run.endT - 1e-6;
+  const hold = 2.5 * Math.max(1, speed / 1.5);
+  // 字幕：目前步驟
+  const si = lastBefore(run.steps, t, (e) => e.t0);
+  const failed = run.crash || res.error;
+  if (doneAll && !failed && res.events.length) setCap("capStep", "end", "🎉 程式全部執行完畢！");
+  else if (doneAll && failed) setCap("capStep", null);
+  else if (si >= 0) {
+    const e = run.steps[si];
+    setCap("capStep", "s" + si, (e.line ? `<span class="ln">第 ${e.line} 行</span>` : "") + `<span>${esc(e.label)}</span>`);
+  } else setCap("capStep", null);
+  // 字幕：print 輸出
+  const pi = lastBefore(run.prints, t, (e) => e.t0);
+  if (pi >= 0 && t - run.prints[pi].t0 < hold && !doneAll) setCap("capSay", "p" + pi, esc(run.prints[pi].label));
+  else setCap("capSay", null);
+  // 字幕：提醒
+  const wi = lastBefore(res.warnings, t, (w) => w.t);
+  if (wi >= 0 && (t - res.warnings[wi].t < hold * 1.4 || (doneAll && !failed && res.warnings[wi].t >= res.total - 1e-6)))
+    setCap("capWarn", "w" + wi, "⚠️ " + esc(res.warnings[wi].msg));
+  else setCap("capWarn", null);
+  // 字幕：錯誤（播放結束才出現）
+  if (doneAll && run.crash) setCap("capErr", "crash", `<div class="h">💥 撞機了！</div><div>${esc(run.crash.msg)}</div>`);
+  else if (doneAll && res.error) {
+    const e = res.error;
+    setCap("capErr", "err", `<div class="h">${esc(e.title || "錯誤")}${e.line ? "（第 " + e.line + " 行）" : ""}</div><div>${esc(e.msg)}</div>${e.hint ? `<div class="tip">💡 ${esc(e.hint)}</div>` : ""}`);
+  } else setCap("capErr", null);
+
+  // 編輯器高亮
+  if (codeDirty) setEditorLine(null);
+  else if (doneAll && res.error && res.error.line) setEditorLine(res.error.line, true);
+  else if (doneAll) setEditorLine(null);
+  else {
+    const e = si >= 0 ? run.steps[si] : null;
+    setEditorLine(e && e.line ? e.line : null, false);
+  }
+
+  // 抽屜清單
+  if (!drawerOpen || !logItems.length) return;
+  let cur = -1;
+  for (let i = 0; i < logItems.length; i++) if (logItems[i].kind === "ev" && logItems[i].t <= t + 1e-6) cur = i;
   for (let i = 0; i < logItems.length; i++) {
     const it = logItems[i];
-    const future = it.kind === "err" || it.kind === "crash" ? !doneAll && t < it.t : it.t > t + 1e-6;
+    const future = it.kind === "err" || it.kind === "crash" ? !doneAll : it.t > t + 1e-6;
     it.el.classList.toggle("future", future);
     if (it.kind === "ev") it.el.classList.toggle("now", i === cur && !doneAll);
   }
-  if (cur !== lastCur || doneAll) {
+  if (cur !== lastCur || force) {
     lastCur = cur;
-    let target = doneAll ? logItems[logItems.length - 1] : logItems[cur];
+    const target = doneAll ? logItems[logItems.length - 1] : logItems[cur];
     if (target) {
       const log = $("log");
-      const top = target.el.offsetTop - log.offsetTop;
+      const top = target.el.offsetTop;
       if (top < log.scrollTop || top > log.scrollTop + log.clientHeight - 40) log.scrollTop = top - log.clientHeight / 2;
     }
-    // 編輯器高亮
-    if (codeDirty) setEditorLine(null);
-    else if (doneAll && run.result.error && run.result.error.line) setEditorLine(run.result.error.line, true);
-    else if (doneAll) setEditorLine(null);
-    else setEditorLine(target && target.line ? target.line : null, false);
   }
 }
 
@@ -890,15 +1361,16 @@ function seek(t, pause) {
   playT = clamp(t, 0, run.endT);
   if (pause) playing = false;
   hideBanner();
+  resetCues();
   updateFrame(true);
 }
 $("playBtn").addEventListener("click", () => {
   if (!run) return;
-  if (playT >= run.endT - 1e-6) { playT = 0; bannerShown = false; }
+  if (playT >= run.endT - 1e-6) { playT = 0; bannerShown = false; resetCues(); }
   playing = !playing;
   hideBanner();
 });
-$("restartBtn").addEventListener("click", () => { if (!run) return; playT = 0; bannerShown = false; playing = true; hideBanner(); updateFrame(true); });
+$("restartBtn").addEventListener("click", () => { if (!run) return; playT = 0; bannerShown = false; playing = true; hideBanner(); resetCues(); updateFrame(true); });
 $("scrub").addEventListener("input", (e) => seek(+e.target.value, true));
 for (const b of $("speedBox").children) {
   b.classList.toggle("on", +b.dataset.speed === speed);
@@ -915,8 +1387,11 @@ function finish() {
   const v = run.verdict;
   if (!v) return;
   $("banner").className = "overlay banner show " + v.cls;
+  $("bannerIcon").textContent = v.icon || "";
   $("bannerTitle").textContent = v.title;
   $("bannerText").textContent = v.text;
+  if (v.sound && Sound.sfx[v.sound]) setTimeout(() => Sound.sfx[v.sound](), v.sound === "fail" && run.crash ? 500 : 50);
+  if (v.confetti) burst(drone.root.position.clone().add(new THREE.Vector3(0, 0.3, 0)), 160, 1);
 }
 function hideBanner() { $("banner").classList.remove("show"); }
 $("bannerClose").addEventListener("click", hideBanner);
@@ -931,9 +1406,13 @@ function updateHUD(p, t) {
     const i = clamp(Math.floor(Math.min(t, run.result.total) / DT), 0, run.samples.length - 1);
     ft = run.samples[i].ft;
   }
-  $("hudB").textContent = Math.max(0, Math.floor(100 - ft / 7.8)) + "%";
-  $("hudP").textContent = "前 " + Math.round(p.x) + " · 左 " + Math.round(p.y);
-  let yaw = ((-p.yaw + 180) % 360 + 360) % 360 - 180;
+  const b = Math.max(0, Math.floor(100 - ft / 7.8));
+  $("hudB").textContent = b + "%";
+  const bar = $("hudBar");
+  bar.style.width = b + "%";
+  bar.style.background = b > 50 ? "#3dbb5a" : b > 20 ? "#ffbf1f" : "#e5484d";
+  $("hudP").textContent = "前 " + Math.round(p.x) + "・左 " + Math.round(p.y);
+  const yaw = ((-p.yaw + 180) % 360 + 360) % 360 - 180;
   $("hudY").textContent = Math.round(yaw) + "°";
   $("hudT").textContent = t.toFixed(1) + " 秒";
 }
@@ -943,7 +1422,7 @@ function updateMissionProgress(t) {
   if (!run || run.missionKey !== missionKey || !run.mission.progress) {
     if (missionKey === "rings") {
       box.innerHTML = RINGS.map((_, i) => `<span class="chip">第 ${i + 1} 圈</span>`).join("");
-      ringMeshes.forEach((m) => m.material.color.set(0x2f7de1));
+      ringMeshes.forEach((m) => m.material.color.set(m.userData.base));
     } else box.innerHTML = "";
     return;
   }
@@ -952,22 +1431,22 @@ function updateMissionProgress(t) {
   if (v === undefined) v = run.mission.progress.filter((x) => x !== undefined).pop() || 0;
   if (missionKey === "rings") {
     box.innerHTML = RINGS.map((_, k) => `<span class="chip${k < v ? " done" : ""}">第 ${k + 1} 圈${k < v ? " ✓" : ""}</span>`).join("");
-    ringMeshes.forEach((m, k) => m.material.color.set(k < v ? 0x1f9d55 : 0x2f7de1));
+    ringMeshes.forEach((m, k) => { m.material.color.set(k < v ? 0x4cd964 : m.userData.base); m.material.emissive.set(k < v ? 0x4cd964 : m.userData.base); });
   } else if (missionKey === "pillar") {
     const a = Math.round(Math.abs(v) * 180 / Math.PI);
-    box.innerHTML = `<span class="chip${a >= 340 ? " done" : ""}">已繞 ${a}°</span>`;
+    box.innerHTML = `<span class="chip${a >= 340 ? " done" : ""}">已繞 ${a}°${a >= 340 ? " ✓" : ""}</span>`;
   }
 }
 
-let lastUI = 0;
+let lastUI = 0, motorSpeed = 0, motorClimb = 0;
 function updateFrame(force) {
   const t = playT;
   const p = poseAt(t);
   const v = S(p.x, p.y, p.z);
   drone.root.position.copy(v);
   drone.root.rotation.y = p.yaw * Math.PI / 180;
-  // 傾斜：依照移動方向
   drone.tilt.rotation.set(0, 0, 0);
+  motorSpeed = 0; motorClimb = 0;
   if (p.flip) {
     const e = p.fu < 0.5 ? 2 * p.fu * p.fu : 1 - Math.pow(-2 * p.fu + 2, 2) / 2;
     const ang = e * Math.PI * 2;
@@ -976,24 +1455,39 @@ function updateFrame(force) {
     else if (p.flip === "l") drone.tilt.rotation.x = -ang;
     else drone.tilt.rotation.x = ang;
     drone.root.position.y += Math.sin(p.fu * Math.PI) * 0.25;
+    motorSpeed = 140;
   } else if (p.crashed) {
     drone.tilt.rotation.z = p.crashed * 1.2;
     drone.tilt.rotation.x = p.crashed * 0.6;
   } else if (run && p.motors) {
     const q = poseAt(Math.min(t + 0.12, run.endT));
-    const dx = (q.x - p.x) / 0.12, dy = (q.y - p.y) / 0.12;
+    const dx = (q.x - p.x) / 0.12, dy = (q.y - p.y) / 0.12, dz = (q.z - p.z) / 0.12;
     const a = p.yaw * Math.PI / 180;
     const fwd = dx * Math.cos(a) + dy * Math.sin(a);
     const left = -dx * Math.sin(a) + dy * Math.cos(a);
     drone.tilt.rotation.z = -clamp(fwd * 0.0035, -0.3, 0.3);
     drone.tilt.rotation.x = -clamp(left * 0.0035, -0.3, 0.3);
+    const dyaw = Math.abs(q.yaw - p.yaw) / 0.12;
+    motorSpeed = Math.hypot(dx, dy) + Math.abs(dz) * 0.5 + dyaw * 0.4;
+    motorClimb = dz;
+    const L = REAL_LEVELS[realKey];
+    if (L.h) {
+      const tt = playing ? t : t + clock;
+      drone.tilt.rotation.z += nz(tt * 2.1, 3.3) * 0.035 * L.tilt;
+      drone.tilt.rotation.x += nz(tt * 2.4, 9.1) * 0.035 * L.tilt;
+      if (!playing) {
+        drone.root.position.x += Math.sin(clock * 1.3) * 0.006 * L.tilt;
+        drone.root.position.z += Math.sin(clock * 1.7 + 1) * 0.006 * L.tilt;
+        drone.root.position.y += Math.sin(clock * 2.1 + 2) * 0.005 * L.tilt;
+      }
+    }
   }
   drone.spin = p.motors;
-  shadow.position.set(v.x, 0.007, v.z);
+  drone.motorsOn = p.motors;
+  shadow.position.set(v.x, 0.009, v.z);
   const hgt = Math.max(0, v.y);
   shadow.scale.setScalar(1 + hgt * 0.25);
   shadow.material.opacity = 0.28 / (1 + hgt * 0.6);
-  // 軌跡
   if (run) {
     const n = clamp(Math.floor(Math.min(t, run.result.total) / DT) + 1, 0, run.samples.length);
     trailGeo.setDrawRange(0, n);
@@ -1006,23 +1500,33 @@ function updateFrame(force) {
     if (run) {
       $("scrub").value = t;
       $("timeLabel").textContent = fmtTime(t) + " / " + fmtTime(run.endT);
-      updateLog(t);
     }
+    updateSteps(t, force);
     updateMissionProgress(t);
     $("playIcon").innerHTML = playing ? PAUSE_SVG : PLAY_SVG;
   }
 }
 
-let lastFrame = performance.now();
+let lastFrame = performance.now(), clock = 0;
 function loop(now) {
-  const dt = Math.min(0.1, (now - lastFrame) / 1000);
+  const dt = Math.min(0.25, (now - lastFrame) / 1000);
   lastFrame = now;
+  clock += dt;
   if (run && playing) {
     playT += dt * speed;
-    if (playT >= run.endT) { playT = run.endT; playing = false; updateFrame(true); finish(); }
+    if (playT >= run.endT) { playT = run.endT; playing = false; fireCues(playT); updateFrame(true); finish(); }
+    else fireCues(playT);
   }
   updateFrame(false);
+  Sound.setMotor(!!(drone.motorsOn && playing), motorSpeed, motorClimb, speed);
+  Sound.setWind(realKey === "windy" ? 0.12 + gustAt(playT + clock * (playing ? 0 : 1)) * 0.25 : 0);
   if (drone.spin) for (const pr of drone.props) pr.rotation.y += dt * 45;
+  // 動畫小細節
+  for (const c of clouds) { c.position.x += dt * 0.25; if (c.position.x > 40) c.position.x = -40; }
+  for (const r of ringMeshes) {
+    if (r.userData.pulse > 0) { r.userData.pulse = Math.max(0, r.userData.pulse - dt * 1.5); r.scale.setScalar(1 + Math.sin(r.userData.pulse * Math.PI) * 0.25); }
+  }
+  updateConfetti(dt);
   // 相機
   const dp = drone.root.position;
   const k = 1 - Math.exp(-dt * 5);
@@ -1044,10 +1548,32 @@ function loop(now) {
     camPos.lerp(want, k);
   }
   camera.position.copy(camPos);
+  if (shake > 0) {
+    shake = Math.max(0, shake - dt);
+    camera.position.x += (Math.random() - 0.5) * shake * 0.15;
+    camera.position.y += (Math.random() - 0.5) * shake * 0.15;
+  }
   camera.lookAt(camTarget);
   renderer.render(scene, camera);
   requestAnimationFrame(loop);
 }
+
+/* =========================================================
+   飄動程度切換
+   ========================================================= */
+function paintReal() {
+  const L = REAL_LEVELS[realKey];
+  $("realBtn").innerHTML = `<span style="font-size:16px">${L.icon}</span>${L.label}`;
+  $("realBtn").title = L.tip;
+}
+$("realBtn").addEventListener("click", () => {
+  realKey = REAL_ORDER[(REAL_ORDER.indexOf(realKey) + 1) % REAL_ORDER.length];
+  store.set("real", realKey);
+  paintReal();
+  hint(REAL_LEVELS[realKey].tip);
+  if (run) loadRun(run.result);
+});
+paintReal();
 
 /* =========================================================
    任務選擇
@@ -1064,13 +1590,12 @@ function setMission(k) {
   $("missionDesc").innerHTML = MISSIONS[k].desc;
   buildMissionScene(k);
   if (run) {
-    // 換任務後用同一段程式重新判定
     loadRun(run.result);
     playing = false;
     playT = run.endT;
-    bannerShown = false;
+    run.cueIdx = run.cues.length;
+    bannerShown = true;
     updateFrame(true);
-    finish();
   } else updateMissionProgress(0);
 }
 missionSel.addEventListener("change", () => setMission(missionSel.value));
@@ -1081,9 +1606,6 @@ function applyMissionOpen() {
 }
 $("missionToggle").addEventListener("click", () => { missionOpen = !missionOpen; store.set("missionOpen", missionOpen ? "1" : "0"); applyMissionOpen(); });
 
-/* =========================================================
-   說明視窗
-   ========================================================= */
 $("helpBtn").addEventListener("click", () => $("helpDlg").showModal());
 $("helpClose").addEventListener("click", () => $("helpDlg").close());
 
