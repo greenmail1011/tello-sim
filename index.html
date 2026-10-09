@@ -1,0 +1,449 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Tello 飛行模擬器</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect x='22' y='26' width='20' height='12' rx='4' fill='%23ff7a1a'/%3E%3Cg fill='none' stroke='%231d3557' stroke-width='5'%3E%3Ccircle cx='14' cy='16' r='9'/%3E%3Ccircle cx='50' cy='16' r='9'/%3E%3Ccircle cx='14' cy='48' r='9'/%3E%3Ccircle cx='50' cy='48' r='9'/%3E%3C/g%3E%3C/svg%3E">
+<style>
+:root {
+  --bg: #eef3f8;
+  --panel: #ffffff;
+  --ink: #1d2b3a;
+  --ink-2: #4c5d70;
+  --ink-3: #8595a7;
+  --line: #dbe3ec;
+  --accent: #ff7a1a;
+  --accent-ink: #ffffff;
+  --accent-dark: #e0620a;
+  --blue: #2f7de1;
+  --blue-soft: #e4effc;
+  --green: #1f9d55;
+  --green-soft: #e3f6ea;
+  --yellow: #a86b00;
+  --yellow-soft: #fff4d6;
+  --red: #d64040;
+  --red-soft: #fde8e8;
+  --code-bg: #fbfcfe;
+  --radius: 14px;
+  --font: "PingFang TC", "Noto Sans TC", "Microsoft JhengHei", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --mono: "SF Mono", Menlo, Consolas, "Courier New", "PingFang TC", "Microsoft JhengHei", monospace;
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; height: 100%; }
+body {
+  background: var(--bg);
+  color: var(--ink);
+  font-family: var(--font);
+  font-size: 15px;
+  -webkit-text-size-adjust: 100%;
+}
+button, select, input { font-family: inherit; font-size: inherit; color: inherit; }
+button { cursor: pointer; }
+
+/* ---------- 版面 ---------- */
+.app {
+  height: 100%;
+  display: grid;
+  grid-template-rows: auto 1fr;
+}
+header {
+  display: flex; align-items: center; gap: 12px;
+  padding: 10px 18px;
+  background: var(--panel);
+  border-bottom: 1px solid var(--line);
+}
+.logo { width: 34px; height: 34px; flex: none; }
+.title h1 { margin: 0; font-size: 19px; letter-spacing: .5px; }
+.title p { margin: 1px 0 0; font-size: 12.5px; color: var(--ink-2); }
+.py-status {
+  margin-left: auto; font-size: 12.5px; color: var(--ink-2);
+  display: flex; align-items: center; gap: 6px; white-space: nowrap;
+}
+.dot { width: 9px; height: 9px; border-radius: 50%; background: #c3ccd6; }
+.dot.ok { background: var(--green); }
+.dot.busy { background: var(--accent); animation: pulse 1s infinite; }
+.dot.bad { background: var(--red); }
+@keyframes pulse { 50% { opacity: .35; } }
+
+main {
+  min-height: 0;
+  display: grid;
+  grid-template-columns: minmax(360px, 440px) 1fr;
+  gap: 14px;
+  padding: 14px;
+}
+.left, .right { min-height: 0; display: flex; flex-direction: column; gap: 14px; }
+.card {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  overflow: hidden;
+}
+
+/* ---------- 編輯器 ---------- */
+.editor-card { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+.toolbar {
+  display: flex; flex-wrap: wrap; gap: 8px; align-items: center;
+  padding: 10px 12px; border-bottom: 1px solid var(--line);
+}
+#exampleSel { flex: 1; min-width: 0; max-width: 200px; }
+.btn {
+  border: 1px solid var(--line); background: var(--panel);
+  border-radius: 10px; padding: 7px 12px; min-height: 38px;
+  font-size: 14px; display: inline-flex; align-items: center; gap: 6px;
+}
+.btn:hover { background: #f4f7fa; }
+.btn:active { transform: translateY(1px); }
+.btn svg { width: 16px; height: 16px; }
+select.btn { padding-right: 8px; }
+
+.editor {
+  flex: 1; min-height: 260px; position: relative;
+  display: flex; background: var(--code-bg);
+  font-family: var(--mono); font-size: 16px; line-height: 24px;
+}
+.gutter {
+  flex: none; width: 44px; overflow: hidden; position: relative;
+  background: #f2f5f9; border-right: 1px solid var(--line);
+  color: var(--ink-3); text-align: right; user-select: none;
+}
+.gutter-inner { position: absolute; left: 0; right: 0; top: 0; padding: 12px 8px 12px 0; }
+.gutter-inner div { height: 24px; }
+.gutter-inner div.cur { color: var(--blue); font-weight: 700; }
+.gutter-inner div.err { color: var(--red); font-weight: 700; }
+.code-wrap { flex: 1; position: relative; min-width: 0; }
+.layer {
+  position: absolute; left: 0; top: 0; pointer-events: none;
+  will-change: transform;
+}
+.layer pre, .code-wrap textarea {
+  margin: 0; padding: 12px 14px;
+  font: inherit; line-height: 24px; tab-size: 4; letter-spacing: 0;
+  white-space: pre; word-wrap: normal;
+}
+.layer pre { color: var(--ink); position: relative; min-width: 100%; }
+.code-wrap textarea {
+  position: absolute; inset: 0; width: 100%; height: 100%;
+  border: 0; outline: none; resize: none; background: transparent;
+  color: transparent; caret-color: var(--ink);
+  overflow: auto; -webkit-overflow-scrolling: touch;
+}
+.code-wrap textarea::selection { background: rgba(47,125,225,.25); color: transparent; }
+.code-wrap textarea::placeholder { color: var(--ink-3); }
+.hl-line {
+  position: absolute; left: 0; right: -4000px; height: 24px;
+  background: rgba(47,125,225,.13); border-left: 3px solid var(--blue);
+  display: none;
+}
+.hl-line.err { background: rgba(214,64,64,.13); border-left-color: var(--red); }
+.tok-kw { color: #a626a4; font-weight: 600; }
+.tok-str { color: #3d8a1f; }
+.tok-num { color: #c65d07; }
+.tok-com { color: #8d99a6; font-style: italic; }
+.tok-fn { color: #2f6fd1; }
+.tok-tello { color: #d0560b; font-weight: 600; }
+
+.run-row {
+  display: flex; gap: 10px; padding: 12px; border-top: 1px solid var(--line);
+  align-items: center;
+}
+.run-btn {
+  flex: 1; min-height: 52px; border: 0; border-radius: 12px;
+  background: var(--accent); color: var(--accent-ink);
+  font-size: 18px; font-weight: 700; letter-spacing: 1px;
+  display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+  box-shadow: 0 3px 0 var(--accent-dark);
+}
+.run-btn:hover { filter: brightness(1.04); }
+.run-btn:active { transform: translateY(2px); box-shadow: 0 1px 0 var(--accent-dark); }
+.run-btn:disabled { background: #c8d0d9; box-shadow: 0 3px 0 #aeb8c3; cursor: wait; }
+.run-btn svg { width: 20px; height: 20px; }
+.hint-line { font-size: 12.5px; color: var(--ink-2); padding: 0 12px 10px; min-height: 18px; }
+
+/* ---------- 3D 畫面 ---------- */
+.view-card { flex: 2; min-height: 300px; position: relative; display: flex; flex-direction: column; }
+.viewport { position: relative; flex: 1; min-height: 0; background: #cfe6fb; touch-action: none; }
+.viewport canvas { display: block; width: 100%; height: 100%; }
+.overlay { position: absolute; pointer-events: none; }
+.overlay > * { pointer-events: auto; }
+.mission-box {
+  left: 12px; top: 12px; max-width: min(360px, calc(100% - 24px));
+  background: rgba(255,255,255,.93); border: 1px solid var(--line);
+  border-radius: 12px; padding: 10px 12px; font-size: 13.5px;
+  backdrop-filter: blur(6px);
+}
+.mission-box select { font-weight: 700; font-size: 15px; border: 0; background: transparent; padding: 2px 0; max-width: 100%; }
+.mission-desc { margin-top: 4px; color: var(--ink-2); line-height: 1.55; }
+.mission-desc b { color: var(--ink); }
+.mission-progress { margin-top: 6px; display: flex; flex-wrap: wrap; gap: 6px; }
+.chip { font-size: 12px; padding: 2px 8px; border-radius: 999px; background: #eef2f6; color: var(--ink-2); }
+.chip.done { background: var(--green-soft); color: var(--green); font-weight: 700; }
+.mission-toggle { font-size: 12px; color: var(--blue); background: none; border: 0; padding: 4px 0 0; }
+
+.hud {
+  right: 12px; top: 12px;
+  display: grid; grid-template-columns: auto auto; gap: 2px 12px;
+  background: rgba(29,43,58,.82); color: #fff; border-radius: 12px;
+  padding: 9px 13px; font-size: 13px; font-variant-numeric: tabular-nums;
+}
+.hud span:nth-child(odd) { color: #a9bbcf; }
+.hud span:nth-child(even) { text-align: right; font-weight: 600; }
+
+.cam-box { right: 12px; bottom: 12px; display: flex; gap: 0; background: rgba(255,255,255,.93); border: 1px solid var(--line); border-radius: 10px; overflow: hidden; }
+.cam-box button { border: 0; background: transparent; padding: 7px 11px; min-height: 36px; font-size: 13px; }
+.cam-box button.on { background: var(--ink); color: #fff; }
+
+.banner {
+  left: 50%; top: 56%; transform: translate(-50%, -50%);
+  background: #fff; border-radius: 16px; padding: 18px 24px; text-align: center;
+  box-shadow: 0 10px 30px rgba(20,40,60,.25); min-width: 240px; max-width: calc(100% - 40px);
+  display: none;
+}
+.banner.show { display: block; animation: pop .35s ease-out; }
+@keyframes pop { from { transform: translate(-50%,-50%) scale(.85); opacity: 0; } }
+.banner h2 { margin: 0 0 4px; font-size: 22px; }
+.banner p { margin: 0; color: var(--ink-2); font-size: 14px; line-height: 1.5; }
+.banner.good h2 { color: var(--green); }
+.banner.bad h2 { color: var(--red); }
+.banner.neutral h2 { color: var(--ink); }
+.banner button { margin-top: 12px; }
+
+.loading {
+  inset: 0; display: flex; align-items: center; justify-content: center;
+  background: rgba(238,243,248,.85); font-size: 15px; color: var(--ink-2);
+}
+
+/* ---------- 播放列 ---------- */
+.playbar {
+  display: flex; align-items: center; gap: 10px; padding: 8px 12px;
+  border-top: 1px solid var(--line); background: var(--panel); flex-wrap: wrap;
+}
+.icon-btn {
+  width: 40px; height: 40px; border-radius: 10px; border: 1px solid var(--line);
+  background: var(--panel); display: inline-flex; align-items: center; justify-content: center; flex: none;
+}
+.icon-btn svg { width: 18px; height: 18px; }
+.icon-btn:disabled { opacity: .4; cursor: default; }
+.scrub { flex: 1; min-width: 120px; accent-color: var(--accent); height: 28px; }
+.time { font-variant-numeric: tabular-nums; font-size: 13px; color: var(--ink-2); white-space: nowrap; }
+.speed { display: flex; border: 1px solid var(--line); border-radius: 10px; overflow: hidden; }
+.speed button { border: 0; background: transparent; padding: 0 10px; height: 38px; font-size: 13px; }
+.speed button.on { background: var(--ink); color: #fff; }
+
+/* ---------- 飛行步驟 ---------- */
+.log-card { flex: 1; min-height: 160px; display: flex; flex-direction: column; }
+.log-head { display: flex; align-items: center; padding: 9px 12px; border-bottom: 1px solid var(--line); gap: 8px; }
+.log-head .label { font-weight: 600; font-size: 14px; }
+.log-head .sub { font-size: 12.5px; color: var(--ink-3); margin-left: auto; }
+.log { flex: 1; overflow: auto; padding: 6px; -webkit-overflow-scrolling: touch; }
+.log-empty { color: var(--ink-3); font-size: 13.5px; padding: 18px; text-align: center; line-height: 1.7; }
+.row {
+  display: grid; grid-template-columns: 58px 62px 1fr; gap: 8px; align-items: baseline;
+  padding: 6px 8px; border-radius: 8px; font-size: 14px; cursor: pointer;
+}
+.row:hover { background: #f4f7fa; }
+.row .t { color: var(--ink-3); font-size: 12.5px; font-variant-numeric: tabular-nums; }
+.row .ln { font-size: 12px; color: var(--ink-3); }
+.row.dim .msg { color: var(--ink-2); }
+.row.print .msg { font-family: var(--mono); font-size: 13.5px; background: #f1f4f8; border-radius: 6px; padding: 1px 6px; justify-self: start; white-space: pre-wrap; word-break: break-all; }
+.row.print .msg::before { content: "輸出 › "; color: var(--ink-3); font-family: var(--font); }
+.row.now { background: var(--blue-soft); }
+.row.now .msg { font-weight: 600; }
+.row.future { opacity: .45; }
+.note {
+  margin: 6px 4px; padding: 10px 12px; border-radius: 10px; font-size: 14px; line-height: 1.55;
+  border: 1px solid transparent;
+}
+.note .h { font-weight: 700; margin-bottom: 2px; }
+.note .where { font-size: 12.5px; opacity: .85; }
+.note.warn { background: var(--yellow-soft); color: #6b4800; border-color: #f3dd9c; }
+.note.err { background: var(--red-soft); color: #8c1f1f; border-color: #f4c2c2; }
+.note.ok { background: var(--green-soft); color: #145c33; border-color: #bfe6cd; }
+.note.future { opacity: .4; }
+
+/* ---------- 說明 ---------- */
+dialog {
+  border: 0; border-radius: 16px; padding: 0; max-width: 640px; width: calc(100% - 32px);
+  box-shadow: 0 20px 50px rgba(20,40,60,.3); color: var(--ink);
+}
+dialog::backdrop { background: rgba(20,30,45,.4); }
+.dlg { padding: 20px 22px; font-size: 14.5px; line-height: 1.7; max-height: 80vh; overflow: auto; }
+.dlg h2 { margin: 0 0 8px; font-size: 19px; }
+.dlg h3 { margin: 14px 0 4px; font-size: 15px; }
+.dlg code { font-family: var(--mono); background: #f1f4f8; padding: 1px 5px; border-radius: 5px; font-size: 13.5px; }
+.dlg table { border-collapse: collapse; width: 100%; font-size: 13.5px; }
+.dlg td { border-bottom: 1px solid var(--line); padding: 5px 6px; vertical-align: top; }
+.dlg td:first-child { font-family: var(--mono); white-space: nowrap; }
+.dlg-foot { padding: 12px 22px; border-top: 1px solid var(--line); text-align: right; }
+
+/* ---------- 平板／窄螢幕 ---------- */
+@media (max-width: 1000px) {
+  .app { height: auto; min-height: 100%; }
+  main { grid-template-columns: 1fr; padding: 10px; gap: 10px; }
+  .left, .right { display: contents; }
+  .view-card { order: 1; flex: none; height: 56vh; min-height: 340px; scroll-margin-top: 8px; }
+  .editor-card { order: 2; flex: none; }
+  .log-card { order: 3; flex: none; height: 320px; }
+  .editor { flex: none; height: 40vh; min-height: 280px; }
+  header { padding: 8px 12px; }
+  .title p { display: none; }
+}
+@media (max-width: 560px) {
+  .hud { grid-template-columns: auto auto; font-size: 12px; padding: 7px 10px; }
+  .mission-box { max-width: calc(100% - 150px); font-size: 12.5px; }
+  .row { grid-template-columns: 50px 1fr; }
+  .row .ln { display: none; }
+  .time { display: none; }
+}
+</style>
+</head>
+<body>
+<div class="app">
+  <header>
+    <svg class="logo" viewBox="0 0 64 64" aria-hidden="true">
+      <rect x="22" y="26" width="20" height="12" rx="4" fill="#ff7a1a"/>
+      <g fill="none" stroke="#1d3557" stroke-width="5"><circle cx="14" cy="16" r="9"/><circle cx="50" cy="16" r="9"/><circle cx="14" cy="48" r="9"/><circle cx="50" cy="48" r="9"/></g>
+    </svg>
+    <div class="title">
+      <h1>Tello 飛行模擬器</h1>
+      <p>把 AI 幫你寫的 Python 程式貼進來，看看虛擬 Tello 會怎麼飛</p>
+    </div>
+    <div class="py-status"><span class="dot busy" id="pyDot"></span><span id="pyText">Python 載入中…</span></div>
+    <button class="btn" id="helpBtn" title="使用說明">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M9.1 9a3 3 0 0 1 5.8 1c0 2-3 2.5-3 4.5"/><circle cx="12" cy="17.5" r=".6" fill="currentColor"/></svg>
+      說明
+    </button>
+  </header>
+
+  <main>
+    <section class="left">
+      <div class="card editor-card">
+        <div class="toolbar">
+          <select class="btn" id="exampleSel" aria-label="範例程式">
+            <option value="">範例程式…</option>
+          </select>
+          <button class="btn" id="openBtn" title="開啟 .py 檔">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>開啟
+          </button>
+          <button class="btn" id="saveBtn" title="下載成 .py 檔">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 4v11m0 0-4-4m4 4 4-4M5 19h14"/></svg>下載
+          </button>
+          <button class="btn" id="clearBtn" title="清空程式">清空</button>
+          <input type="file" id="fileInput" accept=".py,.txt,text/plain,text/x-python" hidden>
+        </div>
+        <div class="editor" id="editor">
+          <div class="gutter"><div class="gutter-inner" id="gutter"></div></div>
+          <div class="code-wrap">
+            <div class="layer" id="layer">
+              <div class="hl-line" id="hlLine"></div>
+              <pre id="hl" aria-hidden="true"></pre>
+            </div>
+            <textarea id="code" spellcheck="false" autocapitalize="off" autocomplete="off" autocorrect="off"
+              placeholder="把 AI 產生的程式貼在這裡…&#10;&#10;（也可以從上面「範例程式」選一個試試看）"></textarea>
+          </div>
+        </div>
+        <div class="run-row">
+          <button class="run-btn" id="runBtn" disabled>
+            <svg viewBox="0 0 24 24" fill="currentColor"><path d="M7 4.5v15a1 1 0 0 0 1.5.86l12.5-7.5a1 1 0 0 0 0-1.72L8.5 3.64A1 1 0 0 0 7 4.5z"/></svg>
+            <span id="runText">執行程式</span>
+          </button>
+        </div>
+        <div class="hint-line" id="hintLine"></div>
+      </div>
+    </section>
+
+    <section class="right">
+      <div class="card view-card">
+        <div class="viewport" id="viewport">
+          <div class="overlay mission-box">
+            <select id="missionSel" aria-label="選擇任務"></select>
+            <div id="missionBody">
+              <div class="mission-desc" id="missionDesc"></div>
+              <div class="mission-progress" id="missionProgress"></div>
+            </div>
+            <button class="mission-toggle" id="missionToggle">收起說明</button>
+          </div>
+          <div class="overlay hud" id="hud">
+            <span>高度</span><span id="hudH">0 cm</span>
+            <span>電量</span><span id="hudB">100%</span>
+            <span>位置</span><span id="hudP">前 0 · 左 0</span>
+            <span>朝向</span><span id="hudY">0°</span>
+            <span>時間</span><span id="hudT">0.0 秒</span>
+          </div>
+          <div class="overlay cam-box" id="camBox">
+            <button data-cam="orbit" class="on">環繞</button>
+            <button data-cam="follow">跟隨</button>
+            <button data-cam="top">俯視</button>
+          </div>
+          <div class="overlay banner" id="banner">
+            <h2 id="bannerTitle"></h2>
+            <p id="bannerText"></p>
+            <button class="btn" id="bannerClose">好</button>
+          </div>
+          <div class="overlay loading" id="loading">3D 場地準備中…</div>
+        </div>
+        <div class="playbar">
+          <button class="icon-btn" id="playBtn" title="播放／暫停" disabled>
+            <svg id="playIcon" viewBox="0 0 24 24" fill="currentColor"><path d="M7 4.5v15a1 1 0 0 0 1.5.86l12.5-7.5a1 1 0 0 0 0-1.72L8.5 3.64A1 1 0 0 0 7 4.5z"/></svg>
+          </button>
+          <button class="icon-btn" id="restartBtn" title="從頭重播" disabled>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M4 12a8 8 0 1 0 2.4-5.7M4 4v4h4"/></svg>
+          </button>
+          <input type="range" class="scrub" id="scrub" min="0" max="1" step="0.01" value="0" disabled aria-label="時間軸">
+          <span class="time" id="timeLabel">0:00.0 / 0:00.0</span>
+          <div class="speed" id="speedBox">
+            <button data-speed="0.5">0.5×</button>
+            <button data-speed="1" class="on">1×</button>
+            <button data-speed="2">2×</button>
+            <button data-speed="4">4×</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="card log-card">
+        <div class="log-head">
+          <span class="label">飛行步驟</span>
+          <span class="sub" id="logSub">點一下步驟可以跳到那個時間</span>
+        </div>
+        <div class="log" id="log">
+          <div class="log-empty">還沒有執行程式。<br>貼上程式後按「執行程式」，這裡會一步一步列出 Tello 做了什麼。</div>
+        </div>
+      </div>
+    </section>
+  </main>
+</div>
+
+<dialog id="helpDlg">
+  <div class="dlg">
+    <h2>怎麼使用</h2>
+    <ol>
+      <li>請 AI 幫你寫一段控制 Tello 的 Python 程式（用 <code>djitellopy</code>）。</li>
+      <li>把程式整段複製，貼到左邊「我的程式」（AI 回答裡的 <code>```</code> 符號會自動拿掉）。</li>
+      <li>按「執行程式」，右邊的虛擬 Tello 就會照著程式飛。程式有錯的話，下面會用紅色告訴你錯在第幾行。</li>
+      <li>想挑戰的話，在右上角選一個「任務」，試著寫出能完成任務的程式！</li>
+    </ol>
+    <h3>常用指令</h3>
+    <table>
+      <tr><td>tello.connect()</td><td>連線（一定要先做）</td></tr>
+      <tr><td>tello.takeoff() / tello.land()</td><td>起飛（約 80 公分高）／降落</td></tr>
+      <tr><td>tello.move_forward(x)</td><td>往前飛 x 公分（back、left、right、up、down 也一樣），x 要在 20～500</td></tr>
+      <tr><td>tello.rotate_clockwise(x)</td><td>順時針轉 x 度（逆時針是 rotate_counter_clockwise），x 要在 1～360</td></tr>
+      <tr><td>tello.flip_forward()</td><td>往前翻滾（flip_back、flip_left、flip_right）</td></tr>
+      <tr><td>tello.set_speed(x)</td><td>設定飛行速度 10～100 公分／秒</td></tr>
+      <tr><td>tello.go_xyz_speed(x, y, z, s)</td><td>直線飛到「前 x、左 y、上 z」的位置</td></tr>
+      <tr><td>tello.curve_xyz_speed(…)</td><td>經過一個點、飛圓弧到另一個點（速度 10～60）</td></tr>
+      <tr><td>tello.send_rc_control(a, b, c, d)</td><td>遙控模式：左右、前後、上下、旋轉的速度（-100～100），配合 time.sleep() 使用</td></tr>
+      <tr><td>tello.get_battery()</td><td>讀取電量（還有 get_height()、get_yaw()…）</td></tr>
+    </table>
+    <h3>和真的 Tello 一樣的規則</h3>
+    <p>距離、角度、速度超出範圍會出錯；沒有 <code>connect()</code> 或還沒起飛就移動也會出錯；空中超過 15 秒沒收到指令會自動降落。模擬器沒有鏡頭，所以拍照、影像辨識要用實機。</p>
+    <h3>座標</h3>
+    <p>場地是 10 × 10 公尺，地上每一格是 50 公分。起飛點的 H 往橘色箭頭方向就是「前方」。</p>
+  </div>
+  <div class="dlg-foot"><button class="btn" id="helpClose">知道了</button></div>
+</dialog>
+
+<script type="module" src="app.js"></script>
+</body>
+</html>
