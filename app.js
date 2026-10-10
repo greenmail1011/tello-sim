@@ -465,25 +465,63 @@ $("clearBtn").addEventListener("click", () => {
    ========================================================= */
 let worker = null, workerReady = false, runId = 0, runTimer = null;
 const RUN_TIMEOUT = 6000;
+const PYTHON_LOAD_TIMEOUT = 90000;
+let workerLoadTimer = null, workerFetchController = null;
 const RUN_LABEL = "起飛！執行程式";
 function setPyStatus(kind, text) { $("pyDot").className = "dot " + kind; $("pyText").textContent = text; }
-function startWorker() {
+async function startWorker() {
+  clearTimeout(workerLoadTimer);
+  workerFetchController?.abort();
+  worker?.terminate();
+  worker = null;
+  const controller = new AbortController();
+  workerFetchController = controller;
   workerReady = false;
   $("runBtn").disabled = true;
   $("runText").textContent = "Python 準備中…";
+  $("retryPython").hidden = true;
   setPyStatus("busy", "Python 載入中…");
-  worker = new Worker("worker.js");
-  worker.onmessage = (ev) => {
+  const fail = (message) => {
+    if (workerFetchController !== controller) return;
+    clearTimeout(workerLoadTimer);
+    controller.abort();
+    worker?.terminate();
+    workerReady = false;
+    $("runBtn").disabled = true;
+    $("runText").textContent = "無法執行";
+    $("retryPython").hidden = false;
+    setPyStatus("bad", "Python 載入失敗");
+    hint("Python 載入失敗：" + message, true);
+  };
+  workerLoadTimer = setTimeout(() => fail("載入逾時，請檢查網路或網站檔案，再按「重新載入 Python」。"), PYTHON_LOAD_TIMEOUT);
+  // 先查核檔案，避免 Worker 的 404 只留下沒有 message 的 ErrorEvent。
+  const workerURL = new URL("./worker.js", import.meta.url);
+  let currentWorker;
+  try {
+    if (location.protocol === "file:") throw new Error("請使用啟動工具或老師的網址開啟，不能直接打開 HTML 檔。");
+    const response = await fetch(workerURL, { cache: "no-cache", signal: controller.signal });
+    if (!response.ok) throw new Error(`worker.js 載入失敗（HTTP ${response.status}），請確認網站已上傳這個檔案。`);
+    if (controller.signal.aborted) return;
+    currentWorker = new Worker(workerURL);
+    worker = currentWorker;
+  } catch (e) {
+    if (!controller.signal.aborted) fail(e.message || "無法取得 worker.js，請檢查網路與網站檔案。");
+    return;
+  }
+  currentWorker.onmessage = (ev) => {
+    if (controller.signal.aborted || worker !== currentWorker) return;
     const m = ev.data;
     if (m.type === "ready") {
+      clearTimeout(workerLoadTimer);
       workerReady = true;
       $("runBtn").disabled = false;
       $("runText").textContent = RUN_LABEL;
       setPyStatus("ok", m.where === "cdn" ? "Python 準備好了（線上版）" : "Python 準備好了");
+      if ($("hintLine").textContent.startsWith("Python 載入失敗")) hint("");
+    } else if (m.type === "loading") {
+      setPyStatus("busy", m.message);
     } else if (m.type === "fatal") {
-      setPyStatus("bad", "Python 載入失敗");
-      $("runText").textContent = "無法執行";
-      hint("Python 載入失敗：" + m.message + "。請確認是用老師的網址開啟（不是直接點兩下 html 檔）。", true);
+      fail(m.message);
     } else if (m.type === "result") {
       if (m.id !== runId) return;
       clearTimeout(runTimer);
@@ -492,12 +530,13 @@ function startWorker() {
       loadRun(m.result);
     }
   };
-  worker.onerror = (e) => {
-    setPyStatus("bad", "Python 載入失敗");
-    hint("Python 載入失敗：" + (e.message || "未知錯誤"), true);
+  currentWorker.onerror = (e) => {
+    if (controller.signal.aborted || worker !== currentWorker) return;
+    fail(e.message || "背景程式 worker.js 無法啟動，請確認網站檔案完整，再按「重新載入 Python」。");
   };
-  worker.postMessage({ type: "init", baseUrl: location.href });
+  currentWorker.postMessage({ type: "init", baseUrl: new URL("./", import.meta.url).href });
 }
+$("retryPython").addEventListener("click", startWorker);
 
 function doRun() {
   if (!workerReady) return;
@@ -750,18 +789,21 @@ function badgeSprite(text, bg, size = 0.3) {
 // 起飛點 H、前方箭頭、距離
 {
   const tex = canvasTex((g, w, h) => {
-    g.fillStyle = "#23324a"; g.beginPath(); g.arc(w / 2, h / 2, w / 2 - 4, 0, Math.PI * 2); g.fill();
-    g.strokeStyle = "#ffd23f"; g.lineWidth = 10; g.beginPath(); g.arc(w / 2, h / 2, w / 2 - 22, 0, Math.PI * 2); g.stroke();
-    g.fillStyle = "#ffffff"; g.font = "bold 130px sans-serif"; g.textAlign = "center"; g.textBaseline = "middle";
+    g.fillStyle = "#fff9e6"; g.beginPath(); g.arc(w / 2, h / 2, w / 2 - 4, 0, Math.PI * 2); g.fill();
+    g.strokeStyle = "#b94700"; g.lineWidth = 12; g.beginPath(); g.arc(w / 2, h / 2, w / 2 - 12, 0, Math.PI * 2); g.stroke();
+    g.strokeStyle = "#ffac24"; g.lineWidth = 8; g.beginPath(); g.arc(w / 2, h / 2, w / 2 - 28, 0, Math.PI * 2); g.stroke();
+    g.fillStyle = "#b94700"; g.font = "bold 142px sans-serif"; g.textAlign = "center"; g.textBaseline = "middle";
     g.fillText("H", w / 2, h / 2 + 8);
   }, 256, 256);
-  const pad = new THREE.Mesh(new THREE.CircleGeometry(0.3, 48), new THREE.MeshBasicMaterial({ map: tex, transparent: true }));
+  const pad = new THREE.Mesh(new THREE.CircleGeometry(0.38, 48), new THREE.MeshBasicMaterial({ map: tex, transparent: true }));
   pad.rotation.x = -Math.PI / 2; pad.rotation.z = -Math.PI / 2; pad.position.y = 0.007; scene.add(pad);
   const sh = new THREE.Shape();
   sh.moveTo(0.4, 0.06); sh.lineTo(0.8, 0.06); sh.lineTo(0.8, 0.15); sh.lineTo(1.02, 0); sh.lineTo(0.8, -0.15); sh.lineTo(0.8, -0.06); sh.lineTo(0.4, -0.06);
   const arrow = new THREE.Mesh(new THREE.ShapeGeometry(sh), new THREE.MeshBasicMaterial({ color: 0xff8a1f }));
   arrow.rotation.x = -Math.PI / 2; arrow.position.y = 0.008; scene.add(arrow);
   scene.add(flatLabel("前方", 1.32, 0.0, 0.26, "#e46f05", -Math.PI / 2));
+  // 機身會遮住正下方的 H；在旁邊保留固定的起飛點標示。
+  scene.add(flatLabel("起飛 H", -0.62, 0, 0.20, "#b94700", -Math.PI / 2));
   for (let i = 1; i <= 4; i++) scene.add(flatLabel("前 " + i + " m", i, 0.5, 0.18, "#6f8297"));
   for (let i = 1; i <= 4; i++) {
     scene.add(flatLabel("左 " + i + " m", -0.6, -i, 0.18, "#6f8297"));
@@ -1933,6 +1975,11 @@ $("bannerNext").addEventListener("click", () => setLevel($("bannerNext").dataset
    指令卡
    ========================================================= */
 const cardVals = {};
+function updateCardsScrollTip() {
+  const grid = $("cardGrid");
+  $("cardsScrollTip").hidden = grid.scrollHeight <= grid.clientHeight + 2;
+}
+new ResizeObserver(updateCardsScrollTip).observe($("cardGrid"));
 function setCards(on) {
   cardsOn = on;
   $("cards").hidden = !on;
