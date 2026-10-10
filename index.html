@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Tello 飛行模擬器</title>
-<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect x='20' y='24' width='24' height='16' rx='6' fill='%23ff8a1f'/%3E%3Ccircle cx='28' cy='32' r='3' fill='%23fff'/%3E%3Ccircle cx='36' cy='32' r='3' fill='%23fff'/%3E%3Cg fill='none' stroke='%233fa9f5' stroke-width='5'%3E%3Ccircle cx='14' cy='16' r='9'/%3E%3Ccircle cx='50' cy='16' r='9'/%3E%3Ccircle cx='14' cy='48' r='9'/%3E%3Ccircle cx='50' cy='48' r='9'/%3E%3C/g%3E%3C/svg%3E">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect x='20' y='24' width='24' height='16' rx='6' fill='%23ff8a1f'/%3E%3Cg fill='none' stroke='%233fa9f5' stroke-width='5'%3E%3Ccircle cx='14' cy='16' r='9'/%3E%3Ccircle cx='50' cy='16' r='9'/%3E%3Ccircle cx='14' cy='48' r='9'/%3E%3Ccircle cx='50' cy='48' r='9'/%3E%3C/g%3E%3C/svg%3E">
 <style>
 :root {
   --bg: #e9f6ff;
@@ -120,6 +120,125 @@ main {
 .run-btn svg { width: 22px; height: 22px; }
 .hint-line { font-size: 13px; color: var(--ink-2); padding: 8px 4px 0; min-height: 26px; }
 
+/* ---------- 指令卡 ---------- */
+.tb-gap { flex: 1; }
+.btn.icon { padding: 6px 9px; }
+.cards-btn.on { background: var(--orange); border-color: var(--orange); color: #fff; }
+.lv-btn { background: var(--sun); border-color: #f2c200; }
+.cards { border-bottom: 2px dashed var(--line); background: #fffaf2; padding: 8px 10px 10px; max-height: 300px; overflow: auto; flex: none; }
+.cards[hidden] { display: none; }
+.cards-head { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--ink-2); margin-bottom: 8px; flex-wrap: wrap; }
+.cards-head span { flex: 1; min-width: 160px; }
+.ins-tip { color: var(--orange); }
+.mini { border: 0; background: #fff; border-radius: 10px; padding: 6px 10px; font-size: 13px; font-weight: 700; box-shadow: 0 1px 0 rgba(0,0,0,.08), 0 0 0 2px var(--line) inset; min-height: 34px; }
+.card-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(84px, 1fr)); gap: 7px; }
+.ccard { border-radius: 14px; background: #fff; box-shadow: 0 0 0 2px var(--c) inset, 0 3px 0 var(--c); overflow: hidden; display: flex; flex-direction: column; }
+.cmain { flex: 1; border: 0; background: color-mix(in srgb, var(--c) 16%, white); padding: 6px 4px 4px; display: flex; flex-direction: column; align-items: center; gap: 1px; min-height: 52px; }
+.cmain:active { filter: brightness(.92); }
+.ci { font-size: 20px; line-height: 1.1; }
+.cl { font-size: 13px; font-weight: 800; color: var(--ink); }
+.cstep { display: flex; align-items: center; justify-content: space-between; border-top: 1px solid color-mix(in srgb, var(--c) 30%, white); }
+.cstep button { border: 0; background: transparent; width: 28px; height: 30px; font-size: 16px; font-weight: 800; color: var(--ink-2); }
+.cstep span { font-size: 13px; font-weight: 800; font-variant-numeric: tabular-nums; }
+.cstep small { font-size: 10px; color: var(--ink-3); margin-left: 1px; }
+.cstep .cdir { width: 100%; font-size: 13px; }
+.gutter { width: 52px; cursor: pointer; }
+.gutter-inner div.ins { color: var(--orange); font-weight: 800; }
+.gutter-inner div.ins::before { content: "▶ "; }
+.tok-blank { background: #fff1a8; outline: 2px dashed #e0a800; border-radius: 3px; color: #8a6200; font-weight: 800; }
+
+/* ---------- 程式拼圖 ---------- */
+.parsons { display: none; flex: 1; min-height: 0; flex-direction: column; overflow: auto; padding: 10px 12px; gap: 6px; background: #fbfdff; }
+.pz-mode .parsons { display: flex; }
+.pz-mode .editor, .pz-mode .cards, .pz-mode .toolbar { display: none !important; }
+.pz-head { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--ink-2); }
+.pz-head span { flex: 1; }
+.pz-label { font-size: 13px; font-weight: 800; color: var(--ink-2); margin-top: 4px; }
+.pz-area { display: flex; flex-direction: column; gap: 6px; padding: 8px; border-radius: 14px; background: #eef4fa; min-height: 60px; }
+.pz-area.ans { background: #fff7e0; box-shadow: 0 0 0 2px #ffd98a inset; min-height: 120px; }
+.pz-block { display: flex; align-items: center; gap: 8px; background: #fff; border-radius: 10px; padding: 8px 8px 8px calc(10px + var(--ind) * 22px); font-family: var(--mono); font-size: 14.5px; box-shadow: 0 2px 0 rgba(35,50,74,.12), 0 0 0 2px var(--line) inset; cursor: pointer; position: relative; }
+.pz-block::before { content: ""; position: absolute; left: 6px; top: 6px; bottom: 6px; width: calc(var(--ind) * 22px); border-left: 3px dotted transparent; background: repeating-linear-gradient(90deg, #d5e3f0 0 3px, transparent 3px 22px); opacity: .9; }
+.pz-block code { flex: 1; white-space: pre-wrap; word-break: break-all; position: relative; font-size: 14px; }
+.pz-block.cur { box-shadow: 0 0 0 3px var(--sun) inset; background: #fff8d6; }
+.pz-block.err { box-shadow: 0 0 0 3px var(--red) inset; background: var(--red-soft); }
+.pz-n { font-size: 11px; color: var(--ink-3); min-width: 14px; position: relative; font-family: var(--font); }
+.pz-ctrl { display: flex; gap: 2px; position: relative; }
+.pz-ctrl button { border: 0; background: #eef3f8; border-radius: 8px; width: 30px; height: 30px; font-size: 12px; }
+.pz-empty { color: var(--ink-3); font-size: 13px; text-align: center; padding: 12px; }
+
+/* ---------- 關卡 ---------- */
+.lv-row { display: flex; align-items: center; gap: 8px; }
+.lv-name { border: 0; background: none; font-weight: 800; font-size: 15px; padding: 2px 0; text-align: left; color: var(--ink); flex: 1; }
+.lv-name::after { content: " ▾"; color: var(--sky); }
+.star-list { list-style: none; margin: 8px 0 0; padding: 0; font-size: 12.5px; color: var(--ink-2); display: flex; flex-direction: column; gap: 2px; }
+.star-list li span { color: #c9d3de; font-size: 15px; margin-right: 5px; }
+.star-list li.ok { color: var(--ink); }
+.star-list li.ok span { color: #ffb800; }
+.level-dlg { max-width: 760px; }
+.level-dlg h2 small { font-size: 13px; color: var(--ink-2); font-weight: 600; margin-left: 8px; }
+.tier { margin-bottom: 14px; }
+.tier-h { display: flex; align-items: baseline; gap: 10px; margin-bottom: 6px; }
+.tier-h span { font-size: 12.5px; color: var(--ink-3); }
+.tiles { display: grid; grid-template-columns: repeat(auto-fill, minmax(118px, 1fr)); gap: 8px; }
+.tile { border: 0; border-radius: 16px; background: #f1f7fd; padding: 10px 8px; display: flex; flex-direction: column; align-items: center; gap: 2px; box-shadow: 0 3px 0 #d5e3f0; }
+.tile:hover { background: #e4f1fd; }
+.tile.cur { background: #fff3c4; box-shadow: 0 3px 0 #f2c200; }
+.tile .n { width: 30px; height: 30px; border-radius: 50%; background: var(--sky); color: #fff; font-weight: 800; display: grid; place-items: center; font-size: 15px; }
+.tile .nm { font-weight: 700; font-size: 13.5px; text-align: center; }
+.tile .st { color: #ffb800; letter-spacing: 2px; font-size: 15px; }
+
+/* ---------- 過關星星 ---------- */
+.big-stars { font-size: 44px; letter-spacing: 6px; margin: 4px 0 6px; }
+.big-stars span { color: #dfe6ee; display: inline-block; }
+.big-stars span.on { color: #ffc400; animation: starPop .5s cubic-bezier(.2,1.8,.4,1) both; text-shadow: 0 3px 0 #e09d00; }
+@keyframes starPop { from { transform: scale(0) rotate(-90deg); } }
+.crit { list-style: none; padding: 0; margin: 4px auto 0; text-align: left; font-size: 13.5px; display: inline-block; color: var(--ink-2); }
+.crit li { margin: 2px 0; }
+.crit li.ok { color: var(--ink); font-weight: 700; }
+.crit-note { font-size: 11.5px; color: var(--ink-3); margin-top: 2px; }
+.banner-btns { display: flex; gap: 8px; justify-content: center; margin-top: 12px; }
+.banner-btns .btn { margin: 0; }
+.banner-btns [hidden] { display: none !important; }
+.banner-btns .next { background: var(--grass); border-color: var(--grass); color: #fff; }
+
+/* ---------- 比賽 ---------- */
+.contest-bar { display: flex; align-items: center; gap: 8px; padding: 8px 12px; white-space: nowrap; font-size: 13.5px; background: linear-gradient(90deg, #fff3c4, #ffe3cc); overflow-x: auto; }
+.contest-bar[hidden], .board-panel[hidden] { display: none; }
+.cb-pill { padding: 3px 10px; border-radius: 999px; font-weight: 800; background: #eef3f8; color: var(--ink-2); }
+.cb-pill.running { background: #e2f7e6; color: #1d8a3c; animation: pulse 1.6s infinite; }
+.cb-pill.ended { background: var(--red-soft); color: var(--red); }
+.cb-timer { font-weight: 800; font-variant-numeric: tabular-nums; }
+.cb-mode { color: var(--ink-3); font-size: 12.5px; }
+.cb-team, .cb-btn { border: 0; border-radius: 999px; padding: 6px 12px; font-weight: 700; background: #eef3f8; }
+.cb-team i, .board-panel i { display: inline-block; width: 11px; height: 11px; border-radius: 50%; margin-right: 6px; vertical-align: -1px; }
+.cb-btn.on { background: var(--sun); }
+.board-panel { right: 12px; top: 12px; width: min(340px, calc(100% - 24px)); max-height: calc(100% - 90px); overflow: auto; padding: 10px 12px; z-index: 2; }
+.bp-head { font-weight: 800; margin-bottom: 6px; }
+.bp-head small { color: var(--ink-3); font-weight: 600; margin-left: 6px; }
+.br { display: grid; grid-template-columns: 36px 1fr auto 46px; gap: 8px; align-items: center; padding: 6px 6px; border-radius: 10px; font-size: 14px; }
+.br.me { background: #fff3c4; }
+.br .rk { font-weight: 800; text-align: center; font-size: 16px; }
+.br .nm { font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.br .mt { font-weight: 800; font-variant-numeric: tabular-nums; }
+.br .tr { color: var(--ink-3); font-size: 12px; text-align: right; }
+.br-empty { color: var(--ink-3); text-align: center; padding: 10px; }
+.tile.contest .n { background: var(--orange); }
+.tile:disabled { opacity: .55; cursor: default; }
+.join-dlg { max-width: 420px; }
+#joinName { font-size: 22px; padding: 10px 14px; border: 2px solid var(--line); border-radius: 14px; width: 100%; text-align: center; }
+
+/* 大螢幕投影 */
+body.screen header .title p, body.screen .py-status, body.screen #levelBtn, body.screen #helpBtn { display: none; }
+body.screen main { grid-template-columns: 1fr; }
+body.screen .editor-card, body.screen .playbar, body.screen .hud, body.screen .captions, body.screen #stepsBtn, body.screen #realBtn, body.screen .cam-box button[data-cam="follow"], body.screen .mission-toggle, body.screen .cb-team, body.screen .cb-btn, body.screen .star-list { display: none !important; }
+body.screen .view-card { height: calc(100vh - 76px); }
+body.screen .contest-bar { font-size: 20px; padding: 10px 18px; }
+body.screen .cb-timer { font-size: 26px; }
+body.screen .board-panel { right: 14px; top: 14px; width: 400px; max-height: calc(100% - 28px); font-size: 17px; }
+body.screen .board-panel .br { font-size: 18px; padding: 9px 8px; }
+body.screen .bp-head { font-size: 22px; }
+body.screen .contest-bar { justify-content: center; }
+
 /* ---------- 3D 畫面 ---------- */
 .view-card { min-height: 0; position: relative; display: flex; flex-direction: column; }
 .viewport { position: relative; flex: 1; min-height: 0; background: #bfe4ff; touch-action: none; overflow: hidden; }
@@ -190,7 +309,7 @@ main {
 .banner p { margin: 0; color: var(--ink-2); font-size: 14.5px; line-height: 1.55; }
 .banner.good h2 { color: var(--grass); }
 .banner.bad h2 { color: var(--red); }
-.banner .btn { margin-top: 12px; }
+
 
 .drawer {
   right: 0; top: 0; bottom: 0; width: min(360px, 88%);
@@ -273,9 +392,8 @@ dialog::backdrop { background: rgba(20,30,45,.4); }
 <div class="app">
   <header>
     <svg class="logo" viewBox="0 0 64 64" aria-hidden="true">
-      <rect x="18" y="22" width="28" height="20" rx="8" fill="#ff8a1f"/>
-      <circle cx="27" cy="32" r="4.5" fill="#fff"/><circle cx="37" cy="32" r="4.5" fill="#fff"/>
-      <circle cx="28" cy="32.5" r="2.2" fill="#23324a"/><circle cx="38" cy="32.5" r="2.2" fill="#23324a"/>
+      <rect x="18" y="22" width="28" height="20" rx="8" fill="#45494f"/>
+      <circle cx="40" cy="32" r="3.2" fill="#23324a"/><rect x="33" y="30.5" width="2.5" height="3" rx=".6" fill="#22c55e"/>
       <g fill="none" stroke="#3fa9f5" stroke-width="5"><circle cx="13" cy="13" r="9"/><circle cx="51" cy="13" r="9"/><circle cx="13" cy="51" r="9"/><circle cx="51" cy="51" r="9"/></g>
     </svg>
     <div class="title">
@@ -283,6 +401,7 @@ dialog::backdrop { background: rgba(20,30,45,.4); }
       <p>把 AI 幫你寫的 Python 程式貼進來，看看虛擬 Tello 會怎麼飛！</p>
     </div>
     <div class="py-status"><span class="dot busy" id="pyDot"></span><span id="pyText">Python 載入中…</span></div>
+    <button class="btn lv-btn" id="levelBtn" title="選擇關卡">🗺️ 關卡</button>
     <button class="btn" id="helpBtn" title="使用說明">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><circle cx="12" cy="12" r="10"/><path d="M9.1 9a3 3 0 0 1 5.8 1c0 2-3 2.5-3 4.5"/><circle cx="12" cy="17.5" r=".6" fill="currentColor"/></svg>
       說明
@@ -292,15 +411,29 @@ dialog::backdrop { background: rgba(20,30,45,.4); }
   <main>
     <section class="card editor-card">
       <div class="toolbar">
-        <select class="btn" id="exampleSel" aria-label="範例程式"><option value="">📚 範例程式…</option></select>
-        <button class="btn" id="openBtn" title="開啟 .py 檔">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>開啟
-        </button>
-        <button class="btn" id="saveBtn" title="下載成 .py 檔">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M12 4v11m0 0-4-4m4 4 4-4M5 19h14"/></svg>下載
-        </button>
-        <button class="btn" id="clearBtn" title="清空程式">清空</button>
+        <button class="btn cards-btn" id="cardsBtn" title="打開／收起指令卡">🧩 指令卡</button>
+        <select class="btn" id="exampleSel" aria-label="範例程式"><option value="">📚 範例…</option></select>
+        <span class="tb-gap"></span>
+        <button class="btn icon" id="openBtn" title="開啟 .py 檔"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg></button>
+        <button class="btn icon" id="saveBtn" title="下載成 .py 檔"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M12 4v11m0 0-4-4m4 4 4-4M5 19h14"/></svg></button>
+        <button class="btn icon" id="resetLevelBtn" title="這一關重新開始"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M4 12a8 8 0 1 0 2.4-5.7M4 4v4h4"/></svg></button>
+        <button class="btn icon" id="clearBtn" title="清空程式"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13"/></svg></button>
         <input type="file" id="fileInput" accept=".py,.txt,text/plain,text/x-python" hidden>
+      </div>
+      <div class="cards" id="cards" hidden>
+        <div class="cards-head">
+          <span>點卡片加入程式　<b class="ins-tip">▶</b> 是加入的位置，點行號可以換位置</span>
+          <button class="mini" id="undoBtn">↶ 復原</button>
+          <button class="mini" id="delLineBtn">🗑 刪除這行</button>
+        </div>
+        <div class="card-grid" id="cardGrid"></div>
+      </div>
+      <div class="parsons" id="parsons">
+        <div class="pz-head"><span>🧩 點積木把它排進「我的程式」，用 ▲▼ 調整順序，✕ 放回去</span><button class="mini" id="pzReset">↺ 重排</button></div>
+        <div class="pz-label">積木箱</div>
+        <div class="pz-area" id="pzPool"></div>
+        <div class="pz-label">我的程式</div>
+        <div class="pz-area ans" id="pzAns"></div>
       </div>
       <div class="editor" id="editor">
         <div class="gutter"><div class="gutter-inner" id="gutter"></div></div>
@@ -323,14 +456,26 @@ dialog::backdrop { background: rgba(20,30,45,.4); }
     </section>
 
     <section class="card view-card">
+      <div class="contest-bar" id="contestBar" hidden>
+          <span class="cb-pill" id="cbStatus">等待老師開始</span>
+          <span class="cb-timer" id="cbTimer">⏱ --:--</span>
+          <span class="cb-mode" id="cbMode"></span>
+          <button class="cb-team" id="cbTeam">＋ 輸入隊名加入</button>
+          <button class="cb-btn" id="cbBoard">🏆 排行榜</button>
+        </div>
       <div class="viewport" id="viewport">
         <div class="overlay mission-box glass">
-          <select id="missionSel" aria-label="選擇任務"></select>
+          <div class="lv-row"><button class="lv-name" id="levelName" title="換關卡"></button><button class="mission-toggle" id="missionToggle">收起</button></div>
           <div id="missionBody">
             <div class="mission-desc" id="missionDesc"></div>
             <div class="mission-progress" id="missionProgress"></div>
+            <ul class="star-list" id="starList"></ul>
           </div>
-          <button class="mission-toggle" id="missionToggle">收起說明</button>
+        </div>
+
+        <div class="overlay board-panel glass" id="boardPanel" hidden>
+          <div class="bp-head">🏆 排行榜 <small id="boardMode"></small></div>
+          <div id="boardRows"></div>
         </div>
 
         <div class="overlay hud">
@@ -353,6 +498,7 @@ dialog::backdrop { background: rgba(20,30,45,.4); }
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M9 6h11M9 12h11M9 18h11"/><circle cx="4.5" cy="6" r="1.3" fill="currentColor"/><circle cx="4.5" cy="12" r="1.3" fill="currentColor"/><circle cx="4.5" cy="18" r="1.3" fill="currentColor"/></svg>步驟
           </button>
           <button class="glass tool-btn" id="realBtn" title="飄動程度"></button>
+          <button class="glass tool-btn" id="bodyBtn" title="切換機身外觀（Tello EDU 深灰／Tello 白色）">⬛ EDU</button>
           <button class="glass tool-btn" id="soundBtn" title="音效開關">
             <svg id="soundIcon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"></svg><span id="soundText">音效</span>
           </button>
@@ -367,7 +513,11 @@ dialog::backdrop { background: rgba(20,30,45,.4); }
           <div class="big" id="bannerIcon"></div>
           <h2 id="bannerTitle"></h2>
           <p id="bannerText"></p>
-          <button class="btn" id="bannerClose">好</button>
+          <div id="bannerStars"></div>
+          <div class="banner-btns">
+            <button class="btn" id="bannerClose">好</button>
+            <button class="btn next" id="bannerNext" hidden>下一關 ▶</button>
+          </div>
         </div>
 
         <div class="overlay drawer" id="drawer">
@@ -402,6 +552,24 @@ dialog::backdrop { background: rgba(20,30,45,.4); }
   </main>
 </div>
 
+<dialog id="joinDlg" class="join-dlg">
+  <div class="dlg" style="text-align:center">
+    <h2>🏁 加入比賽</h2>
+    <p style="margin:4px 0 12px;color:var(--ink-2)">輸入你們這一組的隊名（例如：第 3 組 火箭隊）</p>
+    <input id="joinName" maxlength="16" autocomplete="off" placeholder="隊名">
+    <div id="joinErr" style="color:var(--red);min-height:22px;margin-top:6px"></div>
+    <div class="banner-btns"><button class="btn" id="joinCancel">稍後再說</button><button class="btn next" id="joinBtn">加入！</button></div>
+  </div>
+</dialog>
+
+<dialog id="levelDlg" class="level-dlg">
+  <div class="dlg">
+    <h2>🗺️ 選擇關卡 <small id="levelTotal"></small></h2>
+    <div id="levelGrid"></div>
+  </div>
+  <div class="dlg-foot"><button class="btn" id="levelReset" style="float:left">清除進度</button><button class="btn" id="levelClose">關閉</button></div>
+</dialog>
+
 <dialog id="helpDlg">
   <div class="dlg">
     <h2>🚁 怎麼使用</h2>
@@ -410,7 +578,8 @@ dialog::backdrop { background: rgba(20,30,45,.4); }
       <li>把程式整段複製，貼到左邊（AI 回答裡的 <code>```</code> 符號會自動拿掉）。</li>
       <li>按「起飛！執行程式」，虛擬 Tello 就會照著程式飛。畫面下方的字幕會告訴你現在執行到第幾行；按右下角「步驟」可以看完整清單。</li>
       <li>程式有錯的話，畫面會用紅色告訴你錯在第幾行、要怎麼改。</li>
-      <li>想挑戰的話，在左上角選一個「任務」，試著寫出能完成任務的程式！</li>
+      <li>按「🗺️ 關卡」選關卡。每關有 3 顆星：完成任務 1 顆，再達成額外條件可以拿到另外 2 顆！</li>
+      <li>不會打字也沒關係：按「🧩 指令卡」，點卡片就能把指令加進程式。</li>
     </ol>
     <h3>常用指令</h3>
     <table>
@@ -427,6 +596,15 @@ dialog::backdrop { background: rgba(20,30,45,.4); }
     </table>
     <h3>和真的 Tello 一樣的規則</h3>
     <p>距離、角度、速度超出範圍會出錯；沒有 <code>connect()</code> 或還沒起飛就移動也會出錯；空中超過 15 秒沒收到指令會自動降落。模擬器沒有鏡頭，所以拍照、影像辨識要用實機。</p>
+    <h3>機頭的狀態指示燈（和實機一樣）</h3>
+    <table>
+      <tr><td>紅、綠、黃交替閃</td><td>開機自我檢測（打開網頁的前 3 秒）</td></tr>
+      <tr><td>黃燈快閃</td><td>還沒連線：程式還沒執行 <code>tello.connect()</code></td></tr>
+      <tr><td>綠燈閃兩下、停一下</td><td>已連線，視覺定位正常（可以穩定飛行）</td></tr>
+      <tr><td>黃燈慢閃</td><td>視覺定位無法使用（飛得比 6 公尺還高），進入姿態模式</td></tr>
+      <tr><td>紅燈慢閃／快閃</td><td>電量低／電量嚴重不足</td></tr>
+    </table>
+    <p>右下角「⬛ EDU」可以切換成白色的一般 Tello 外觀。</p>
     <h3>場地</h3>
     <p>場地是 10 × 10 公尺的彩色地墊，每一塊地墊是 1 公尺。起飛點 H 往橘色箭頭方向就是「前方」。</p>
   </div>

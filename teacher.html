@@ -1,0 +1,460 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Tello 比賽控制台</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Ctext y='50' font-size='50'%3E🏁%3C/text%3E%3C/svg%3E">
+<style>
+:root {
+  --ink: #23324a; --ink-2: #536379; --ink-3: #8b9bb0; --line: #d9e6f2;
+  --orange: #ff8a1f; --sky: #3fa9f5; --grass: #3dbb5a; --red: #e5484d; --sun: #ffd23f;
+  --font: "PingFang TC", "Noto Sans TC", "Microsoft JhengHei", system-ui, sans-serif;
+}
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+body { margin: 0; font-family: var(--font); color: var(--ink); background: linear-gradient(180deg, #d7efff, #f3fbef); min-height: 100vh; font-size: 14.5px; }
+button, input, select { font: inherit; color: inherit; }
+button { cursor: pointer; }
+header { display: flex; align-items: center; gap: 12px; padding: 12px 18px; }
+header h1 { margin: 0; font-size: 21px; }
+header .pin { margin-left: auto; font-size: 13px; color: var(--ink-2); }
+main { display: grid; grid-template-columns: minmax(420px, 1.15fr) minmax(380px, 1fr); gap: 14px; padding: 0 14px 14px; }
+.card { background: #fff; border-radius: 20px; padding: 14px 16px; box-shadow: 0 4px 0 rgba(35,50,74,.06), 0 10px 30px rgba(35,90,140,.08); }
+.card h2 { margin: 0 0 10px; font-size: 17px; display: flex; align-items: center; gap: 8px; }
+.card h2 small { font-weight: 500; color: var(--ink-3); font-size: 12.5px; }
+.btn { border: 2px solid var(--line); background: #fff; border-radius: 12px; padding: 7px 12px; font-weight: 700; min-height: 40px; display: inline-flex; align-items: center; gap: 6px; }
+.btn:hover { background: #f4f9ff; }
+.btn.primary { background: var(--orange); border-color: var(--orange); color: #fff; }
+.btn.go { background: var(--grass); border-color: var(--grass); color: #fff; }
+.btn.stop { background: var(--red); border-color: var(--red); color: #fff; }
+.btn:disabled { opacity: .45; cursor: default; }
+.row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.tools { margin-bottom: 10px; }
+.tools .btn { padding: 6px 10px; }
+.canvas-wrap { position: relative; width: 100%; aspect-ratio: 1; border-radius: 16px; overflow: hidden; background: #e9f5e2; touch-action: none; }
+canvas { width: 100%; height: 100%; display: block; }
+.props { margin-top: 10px; padding: 10px 12px; border-radius: 14px; background: #f4f9ff; min-height: 54px; }
+.props label { display: inline-flex; align-items: center; gap: 4px; margin: 3px 10px 3px 0; font-size: 13px; color: var(--ink-2); }
+.props input[type=number] { width: 72px; padding: 5px 6px; border: 2px solid var(--line); border-radius: 8px; }
+.props .hint { color: var(--ink-3); font-size: 13px; }
+.stat { display: flex; gap: 10px; align-items: center; margin: 10px 0; }
+.big-timer { font-size: 34px; font-weight: 800; font-variant-numeric: tabular-nums; }
+.status-pill { padding: 4px 12px; border-radius: 999px; font-weight: 800; font-size: 13px; background: #eef3f8; }
+.status-pill.running { background: #e2f7e6; color: #1d8a3c; }
+.status-pill.ended { background: #ffe8e8; color: var(--red); }
+.seg { display: inline-flex; background: #eef3f8; border-radius: 12px; padding: 3px; }
+.seg button { border: 0; background: transparent; border-radius: 9px; padding: 6px 12px; font-weight: 700; color: var(--ink-2); }
+.seg button.on { background: #fff; color: var(--ink); box-shadow: 0 1px 3px rgba(0,0,0,.12); }
+table { width: 100%; border-collapse: collapse; margin-top: 6px; }
+th { text-align: left; font-size: 12.5px; color: var(--ink-3); font-weight: 600; padding: 6px; border-bottom: 2px solid var(--line); }
+td { padding: 8px 6px; border-bottom: 1px solid #edf2f7; font-variant-numeric: tabular-nums; }
+.dot { display: inline-block; width: 12px; height: 12px; border-radius: 50%; margin-right: 6px; vertical-align: -1px; }
+.rank { font-weight: 800; font-size: 16px; width: 40px; }
+.off { color: var(--ink-3); }
+.kick { border: 0; background: none; color: var(--ink-3); font-size: 16px; }
+.login { max-width: 360px; margin: 12vh auto; text-align: center; }
+.login input { font-size: 28px; width: 160px; text-align: center; letter-spacing: 8px; padding: 8px; border: 2px solid var(--line); border-radius: 14px; }
+.err { color: var(--red); min-height: 20px; margin-top: 8px; }
+.note { font-size: 12.5px; color: var(--ink-3); margin-top: 8px; line-height: 1.6; }
+@media (max-width: 900px) { main { grid-template-columns: 1fr; } }
+</style>
+</head>
+<body>
+<header>
+  <h1>🏁 Tello 比賽控制台</h1>
+  <span class="pin" id="who"></span>
+</header>
+
+<div class="card login" id="login">
+  <h2 style="justify-content:center">請輸入 PIN 碼</h2>
+  <p class="note">PIN 碼顯示在老師電腦的黑色視窗裡</p>
+  <input id="pinInput" inputmode="numeric" maxlength="6" autocomplete="off">
+  <div><button class="btn primary" id="pinBtn" style="margin-top:12px">進入控制台</button></div>
+  <div class="err" id="pinErr"></div>
+</div>
+
+<main id="app" hidden>
+  <section class="card">
+    <h2>🗺️ 場地設計 <small>拖曳物件移動；點選後可以在下方調整</small></h2>
+    <div class="row tools">
+      <button class="btn" data-add="star">⭐ 星星</button>
+      <button class="btn" data-add="ringx">⭕ 圈（正面朝前）</button>
+      <button class="btn" data-add="ringy">⭕ 圈（正面朝側）</button>
+      <button class="btn" data-add="pillar">🍭 柱子</button>
+      <button class="btn" data-add="wall">🧱 牆</button>
+      <button class="btn" data-add="pad">🎯 停機坪</button>
+      <button class="btn" id="delBtn">🗑 刪除</button>
+    </div>
+    <div class="canvas-wrap" id="cw"><canvas id="cv"></canvas></div>
+    <div class="props" id="props"><span class="hint">點一下場地上的物件，就可以調整它的位置和高度。</span></div>
+    <div class="row" style="margin-top:10px">
+      <select class="btn" id="preset">
+        <option value="">📐 載入範本…</option>
+        <option value="stars">星星大搜索</option>
+        <option value="rings">圈圈障礙賽</option>
+        <option value="maze">迷宮牆</option>
+        <option value="mix">綜合挑戰</option>
+        <option value="empty">空白場地</option>
+      </select>
+      <button class="btn" id="exportBtn">⬇ 匯出</button>
+      <button class="btn" id="importBtn">⬆ 匯入</button>
+      <input type="file" id="importFile" accept=".json" hidden>
+      <span style="flex:1"></span>
+      <button class="btn primary" id="applyBtn">✅ 套用到比賽場地</button>
+    </div>
+    <div class="note" id="applyNote">按「套用到比賽場地」後，學生畫面的「🏁 比賽場地」關卡會自動更新。任務規則：摘下全部星星、照順序穿過全部的圈，最後降落（有停機坪就要降落在停機坪上）。撞到牆、柱子或圈框就失敗。</div>
+  </section>
+
+  <section style="display:flex;flex-direction:column;gap:14px">
+    <div class="card">
+      <h2>⏱ 比賽控制</h2>
+      <div class="row">
+        <span style="font-size:13px;color:var(--ink-2)">排名方式</span>
+        <div class="seg" id="modeSeg">
+          <button data-m="first" class="on">最先完成</button>
+          <button data-m="time">飛行時間最短</button>
+          <button data-m="lines">程式最短</button>
+        </div>
+      </div>
+      <div class="row" style="margin-top:8px">
+        <span style="font-size:13px;color:var(--ink-2)">比賽時間</span>
+        <select class="btn" id="duration">
+          <option value="0">不限時</option><option value="300">5 分鐘</option><option value="600" selected>10 分鐘</option>
+          <option value="900">15 分鐘</option><option value="1200">20 分鐘</option><option value="1800">30 分鐘</option>
+        </select>
+      </div>
+      <div class="stat">
+        <span class="status-pill" id="status">等待開始</span>
+        <span class="big-timer" id="timer">--:--</span>
+      </div>
+      <div class="row">
+        <button class="btn go" id="startBtn">▶ 開始比賽</button>
+        <button class="btn stop" id="stopBtn">■ 結束比賽</button>
+        <button class="btn" id="resetBtn">↺ 清除成績</button>
+        <a class="btn" href="index.html?screen=1" target="_blank">📺 開啟大螢幕畫面</a>
+      </div>
+      <div class="note">開始比賽時會清除上一場的成績。比賽中可以隨時切換排名方式，排行榜會立刻重新排序。比賽中更換場地的話，之前的成績不會被計入新場地。</div>
+    </div>
+
+    <div class="card">
+      <h2>🏆 排行榜 <small id="teamCount"></small></h2>
+      <table>
+        <thead><tr><th>名次</th><th>隊伍</th><th>完成時間</th><th>飛行秒數</th><th>程式行數</th><th>嘗試</th><th></th></tr></thead>
+        <tbody id="board"></tbody>
+      </table>
+      <div class="row" style="margin-top:10px"><button class="btn" id="clearTeams">清除所有隊伍</button></div>
+    </div>
+  </section>
+</main>
+
+<script>
+const $ = (id) => document.getElementById(id);
+let PIN = sessionStorage.getItem("tello-pin") || "";
+const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+
+async function api(action, extra = {}) {
+  const r = await fetch("api/teacher", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ pin: PIN, action, ...extra }) });
+  return r.json();
+}
+
+/* ---------------- 登入 ---------------- */
+async function tryLogin(pin) {
+  PIN = pin;
+  try {
+    const r = await api("check");
+    if (r.ok) { sessionStorage.setItem("tello-pin", pin); $("login").hidden = true; $("app").hidden = false; start(); return; }
+  } catch (e) {}
+  $("pinErr").textContent = "PIN 碼不對，或伺服器沒有開啟";
+}
+$("pinBtn").onclick = () => tryLogin($("pinInput").value.trim());
+$("pinInput").addEventListener("keydown", (e) => { if (e.key === "Enter") tryLogin($("pinInput").value.trim()); });
+if (PIN) tryLogin(PIN);
+
+/* ---------------- 場地資料 ---------------- */
+const RING_COLORS = [0xff5d5d, 0xffbf1f, 0xa66cff, 0x3fa9f5, 0x3dbb5a, 0xff6fa1];
+const WALL_COLORS = ["#7cc6ff", "#ffb46b", "#b9a3ff", "#8fe0a3", "#ff9fc2"];
+const PRESETS = {
+  empty: { stars: [], rings: [], pillars: [], walls: [], pad: null },
+  stars: { stars: [{ x: 150, y: 100, z: 100 }, { x: 250, y: -150, z: 150 }, { x: 350, y: 50, z: 80 }, { x: 100, y: -250, z: 120 }, { x: 400, y: -50, z: 200 }], rings: [], pillars: [], walls: [], pad: null },
+  rings: { stars: [], rings: [{ x: 150, y: 0, z: 120, axis: "x", color: 0xff5d5d }, { x: 350, y: 0, z: 200, axis: "x", color: 0xffbf1f }, { x: 450, y: 150, z: 200, axis: "y", color: 0xa66cff }], pillars: [], walls: [], pad: { x: 450, y: 250, r: 35 } },
+  maze: { stars: [{ x: 400, y: 0, z: 100 }], rings: [], pillars: [], walls: [{ x: 150, y: -75, w: 20, d: 250, h: 250, color: "#7cc6ff" }, { x: 300, y: 100, w: 20, d: 300, h: 250, color: "#ffb46b" }], pad: { x: 460, y: 0, r: 35 } },
+  mix: { stars: [{ x: 100, y: 150, z: 100 }, { x: 300, y: -150, z: 150 }], rings: [{ x: 200, y: 0, z: 120, axis: "x", color: 0xff5d5d }], pillars: [{ x: 300, y: 50, r: 20, h: 300 }], walls: [{ x: 400, y: 100, w: 20, d: 200, h: 200, color: "#b9a3ff" }], pad: { x: 450, y: -100, r: 35 } },
+};
+let arena = JSON.parse(JSON.stringify(PRESETS.rings));
+let sel = null; // {type, i}
+
+/* ---------------- 2D 編輯器 ---------------- */
+const cv = $("cv"), cw = $("cw");
+let W = 600, SC = 0.6, DPR = 1;
+function resize() {
+  DPR = Math.min(2, window.devicePixelRatio || 1);
+  W = cw.clientWidth;
+  cv.width = W * DPR; cv.height = W * DPR;
+  SC = W / 1100; // 11 m 視野（場地 10 m + 邊）
+  draw();
+}
+new ResizeObserver(resize).observe(cw);
+const toC = (x, y) => [W / 2 - y * SC, W / 2 - x * SC];         // 模擬座標 → 畫布
+const toS = (cx, cy) => [(W / 2 - cy) / SC, (W / 2 - cx) / SC];
+const snap = (v) => Math.round(v / 10) * 10;
+const hex = (n) => "#" + n.toString(16).padStart(6, "0");
+
+function starPath(g, cx, cy, r) {
+  g.beginPath();
+  for (let i = 0; i < 10; i++) {
+    const rr = i % 2 ? r * 0.45 : r, a = -Math.PI / 2 + i * Math.PI / 5;
+    g[i ? "lineTo" : "moveTo"](cx + Math.cos(a) * rr, cy + Math.sin(a) * rr);
+  }
+  g.closePath();
+}
+function label(g, text, x, y, color = "#23324a") {
+  g.font = "bold 12px " + getComputedStyle(document.body).fontFamily;
+  g.textAlign = "center"; g.textBaseline = "middle";
+  g.lineWidth = 4; g.strokeStyle = "#fff"; g.strokeText(text, x, y);
+  g.fillStyle = color; g.fillText(text, x, y);
+}
+function draw() {
+  const g = cv.getContext("2d");
+  g.setTransform(DPR, 0, 0, DPR, 0, 0);
+  g.clearRect(0, 0, W, W);
+  g.fillStyle = "#cfeec0"; g.fillRect(0, 0, W, W);
+  // 地墊
+  const PAL = ["#fff1c2", "#d6eeff", "#ffe0ea", "#daf5d3", "#efe4ff"];
+  for (let i = 0; i < 10; i++) for (let j = 0; j < 10; j++) {
+    const [x0, y0] = toC(500 - i * 100, 500 - j * 100);
+    g.fillStyle = PAL[(i * 2 + j * 3) % PAL.length];
+    g.fillRect(x0, y0, 100 * SC, 100 * SC);
+  }
+  g.strokeStyle = "#fff"; g.lineWidth = 2;
+  for (let k = -500; k <= 500; k += 100) {
+    let [a, b] = toC(k, 500); let [c, d] = toC(k, -500); g.beginPath(); g.moveTo(a, b); g.lineTo(c, d); g.stroke();
+    [a, b] = toC(500, k); [c, d] = toC(-500, k); g.beginPath(); g.moveTo(a, b); g.lineTo(c, d); g.stroke();
+  }
+  g.strokeStyle = "#3fa9f5"; g.lineWidth = 4;
+  { const [a, b] = toC(500, 500); g.strokeRect(a, b, 1000 * SC, 1000 * SC); }
+  // H 與前方箭頭
+  { const [cx, cy] = toC(0, 0);
+    g.fillStyle = "#23324a"; g.beginPath(); g.arc(cx, cy, 30 * SC, 0, 7); g.fill();
+    label(g, "H", cx, cy, "#ffd23f");
+    g.fillStyle = "#ff8a1f"; g.beginPath(); g.moveTo(cx, cy - 95 * SC); g.lineTo(cx - 12, cy - 60 * SC); g.lineTo(cx + 12, cy - 60 * SC); g.fill();
+    label(g, "前方", cx, cy - 110 * SC, "#e46f05");
+    for (let i = 1; i <= 4; i++) { const [lx, ly] = toC(i * 100, -40); label(g, i + "m", lx, ly, "#7a8ca0"); }
+  }
+  const isSel = (t, i) => sel && sel.type === t && sel.i === i;
+  // 停機坪
+  if (arena.pad) {
+    const [cx, cy] = toC(arena.pad.x, arena.pad.y);
+    g.fillStyle = "#ffd23f"; g.beginPath(); g.arc(cx, cy, arena.pad.r * SC * 1.25, 0, 7); g.fill();
+    g.strokeStyle = "#ff8a1f"; g.lineWidth = 3; g.beginPath(); g.arc(cx, cy, arena.pad.r * SC * 0.6, 0, 7); g.stroke();
+    if (isSel("pad", 0)) { g.strokeStyle = "#23324a"; g.setLineDash([5, 4]); g.beginPath(); g.arc(cx, cy, arena.pad.r * SC * 1.25 + 5, 0, 7); g.stroke(); g.setLineDash([]); }
+    label(g, "停機坪", cx, cy + arena.pad.r * SC * 1.25 + 10);
+  }
+  // 牆
+  arena.walls.forEach((w, i) => {
+    const [x0, y0] = toC(w.x + w.w / 2, w.y + w.d / 2);
+    g.fillStyle = w.color || "#7cc6ff"; g.fillRect(x0, y0, w.d * SC, w.w * SC);
+    g.strokeStyle = isSel("wall", i) ? "#23324a" : "rgba(35,50,74,.35)"; g.lineWidth = isSel("wall", i) ? 3 : 1.5;
+    g.strokeRect(x0, y0, w.d * SC, w.w * SC);
+    const [cx, cy] = toC(w.x, w.y); label(g, "牆 " + w.h + "cm", cx, cy);
+  });
+  // 柱子
+  arena.pillars.forEach((p, i) => {
+    const [cx, cy] = toC(p.x, p.y);
+    g.fillStyle = "#ff5d5d"; g.beginPath(); g.arc(cx, cy, Math.max(6, p.r * SC), 0, 7); g.fill();
+    g.strokeStyle = "#fff"; g.lineWidth = 3; g.beginPath(); g.arc(cx, cy, Math.max(3, p.r * SC * 0.5), 0, 7); g.stroke();
+    if (isSel("pillar", i)) { g.strokeStyle = "#23324a"; g.setLineDash([5, 4]); g.beginPath(); g.arc(cx, cy, p.r * SC + 8, 0, 7); g.stroke(); g.setLineDash([]); }
+  });
+  // 圈
+  arena.rings.forEach((r, i) => {
+    const [cx, cy] = toC(r.x, r.y);
+    const half = 50 * SC;
+    g.strokeStyle = hex(r.color); g.lineWidth = 8; g.lineCap = "round";
+    g.beginPath();
+    if (r.axis === "x") { g.moveTo(cx - half, cy); g.lineTo(cx + half, cy); } else { g.moveTo(cx, cy - half); g.lineTo(cx, cy + half); }
+    g.stroke();
+    if (isSel("ring", i)) { g.strokeStyle = "#23324a"; g.lineWidth = 2; g.setLineDash([5, 4]); g.strokeRect(cx - half - 8, cy - half - 8, half * 2 + 16, half * 2 + 16); g.setLineDash([]); }
+    g.fillStyle = hex(r.color); g.beginPath(); g.arc(cx, cy, 11, 0, 7); g.fill();
+    label(g, String(i + 1), cx, cy, "#fff");
+    label(g, "高 " + r.z, cx + (r.axis === "x" ? 0 : 26), cy + (r.axis === "x" ? 18 : 0));
+  });
+  // 星星
+  arena.stars.forEach((s, i) => {
+    const [cx, cy] = toC(s.x, s.y);
+    starPath(g, cx, cy, 13); g.fillStyle = "#ffd23f"; g.fill(); g.strokeStyle = isSel("star", i) ? "#23324a" : "#e0a800"; g.lineWidth = isSel("star", i) ? 3 : 2; g.stroke();
+    label(g, "高 " + s.z, cx, cy + 20);
+  });
+}
+
+function hitTest(px, py) {
+  const P = (x, y) => toC(x, y);
+  for (let i = arena.stars.length - 1; i >= 0; i--) { const [x, y] = P(arena.stars[i].x, arena.stars[i].y); if (Math.hypot(px - x, py - y) < 18) return { type: "star", i }; }
+  for (let i = arena.rings.length - 1; i >= 0; i--) {
+    const r = arena.rings[i], [x, y] = P(r.x, r.y), h = 50 * SC + 6;
+    if (r.axis === "x" ? Math.abs(py - y) < 12 && Math.abs(px - x) < h : Math.abs(px - x) < 12 && Math.abs(py - y) < h) return { type: "ring", i };
+  }
+  for (let i = arena.pillars.length - 1; i >= 0; i--) { const p = arena.pillars[i], [x, y] = P(p.x, p.y); if (Math.hypot(px - x, py - y) < Math.max(14, p.r * SC + 4)) return { type: "pillar", i }; }
+  for (let i = arena.walls.length - 1; i >= 0; i--) {
+    const w = arena.walls[i], [x0, y0] = P(w.x + w.w / 2, w.y + w.d / 2);
+    if (px >= x0 - 4 && px <= x0 + w.d * SC + 4 && py >= y0 - 4 && py <= y0 + w.w * SC + 4) return { type: "wall", i };
+  }
+  if (arena.pad) { const [x, y] = P(arena.pad.x, arena.pad.y); if (Math.hypot(px - x, py - y) < arena.pad.r * SC * 1.25 + 4) return { type: "pad", i: 0 }; }
+  return null;
+}
+const objOf = (s) => !s ? null : s.type === "pad" ? arena.pad : arena[s.type + "s"][s.i];
+
+let drag = null;
+cv.addEventListener("pointerdown", (e) => {
+  const rc = cv.getBoundingClientRect();
+  const px = e.clientX - rc.left, py = e.clientY - rc.top;
+  sel = hitTest(px, py);
+  if (sel) { const o = objOf(sel); const [sx, sy] = toS(px, py); drag = { dx: o.x - sx, dy: o.y - sy }; cv.setPointerCapture(e.pointerId); }
+  draw(); renderProps();
+});
+cv.addEventListener("pointermove", (e) => {
+  if (!drag || !sel) return;
+  const rc = cv.getBoundingClientRect();
+  const [sx, sy] = toS(e.clientX - rc.left, e.clientY - rc.top);
+  const o = objOf(sel);
+  o.x = Math.max(-500, Math.min(500, snap(sx + drag.dx)));
+  o.y = Math.max(-500, Math.min(500, snap(sy + drag.dy)));
+  draw(); renderProps();
+});
+cv.addEventListener("pointerup", () => { drag = null; markDirty(); });
+
+const FIELDS = {
+  star: [["x", "前方 x"], ["y", "左方 y"], ["z", "高度"]],
+  ring: [["x", "前方 x"], ["y", "左方 y"], ["z", "高度"]],
+  pillar: [["x", "前方 x"], ["y", "左方 y"], ["r", "半徑"], ["h", "高度"]],
+  wall: [["x", "前方 x"], ["y", "左方 y"], ["w", "厚度(前後)"], ["d", "長度(左右)"], ["h", "高度"]],
+  pad: [["x", "前方 x"], ["y", "左方 y"], ["r", "半徑"]],
+};
+const NAMES = { star: "⭐ 星星", ring: "⭕ 圈", pillar: "🍭 柱子", wall: "🧱 牆", pad: "🎯 停機坪" };
+function renderProps() {
+  const box = $("props");
+  if (!sel) { box.innerHTML = '<span class="hint">點一下場地上的物件，就可以調整它的位置和高度（單位：公分）。</span>'; return; }
+  const o = objOf(sel);
+  let html = `<b>${NAMES[sel.type]}${sel.type === "ring" ? " 第 " + (sel.i + 1) + " 個" : ""}</b><br>`;
+  for (const [k, lab] of FIELDS[sel.type]) html += `<label>${lab}<input type="number" step="10" data-k="${k}" value="${o[k]}"></label>`;
+  if (sel.type === "ring") html += `<label><button class="btn" id="flipRing" style="min-height:30px;padding:2px 10px">↻ 轉方向（目前：${o.axis === "x" ? "正面朝前" : "正面朝側"}）</button></label>
+    <label><button class="btn" id="ringUp" style="min-height:30px;padding:2px 10px">順序提前</button></label>`;
+  box.innerHTML = html;
+  box.querySelectorAll("input").forEach((inp) => inp.addEventListener("change", () => {
+    let v = Math.round(+inp.value || 0);
+    const k = inp.dataset.k;
+    if (k === "x" || k === "y") v = Math.max(-500, Math.min(500, v));
+    if (k === "z") v = Math.max(30, Math.min(400, v));
+    if (k === "h") v = Math.max(30, Math.min(500, v));
+    if (k === "r") v = Math.max(10, Math.min(150, v));
+    if (k === "w" || k === "d") v = Math.max(10, Math.min(1000, v));
+    o[k] = v; inp.value = v; draw(); markDirty();
+  }));
+  const fr = $("flipRing"); if (fr) fr.onclick = () => { o.axis = o.axis === "x" ? "y" : "x"; draw(); renderProps(); markDirty(); };
+  const ru = $("ringUp"); if (ru) ru.onclick = () => { if (sel.i > 0) { const a = arena.rings; [a[sel.i - 1], a[sel.i]] = [a[sel.i], a[sel.i - 1]]; sel.i--; draw(); renderProps(); markDirty(); } };
+}
+document.querySelectorAll("[data-add]").forEach((b) => b.onclick = () => {
+  const t = b.dataset.add;
+  if (t === "star") { arena.stars.push({ x: 200, y: 0, z: 100 }); sel = { type: "star", i: arena.stars.length - 1 }; }
+  if (t === "ringx" || t === "ringy") { arena.rings.push({ x: 200, y: 0, z: 120, axis: t === "ringx" ? "x" : "y", color: RING_COLORS[arena.rings.length % RING_COLORS.length] }); sel = { type: "ring", i: arena.rings.length - 1 }; }
+  if (t === "pillar") { arena.pillars.push({ x: 250, y: 0, r: 20, h: 300 }); sel = { type: "pillar", i: arena.pillars.length - 1 }; }
+  if (t === "wall") { arena.walls.push({ x: 250, y: 0, w: 20, d: 200, h: 200, color: WALL_COLORS[arena.walls.length % WALL_COLORS.length] }); sel = { type: "wall", i: arena.walls.length - 1 }; }
+  if (t === "pad") { arena.pad = arena.pad || { x: 300, y: 0, r: 35 }; sel = { type: "pad", i: 0 }; }
+  draw(); renderProps(); markDirty();
+});
+function delSel() {
+  if (!sel) return;
+  if (sel.type === "pad") arena.pad = null; else arena[sel.type + "s"].splice(sel.i, 1);
+  sel = null; draw(); renderProps(); markDirty();
+}
+$("delBtn").onclick = delSel;
+document.addEventListener("keydown", (e) => { if ((e.key === "Delete" || e.key === "Backspace") && sel && document.activeElement.tagName !== "INPUT") delSel(); });
+$("preset").onchange = () => {
+  const v = $("preset").value; if (!v) return;
+  arena = JSON.parse(JSON.stringify(PRESETS[v])); sel = null; $("preset").value = "";
+  draw(); renderProps(); markDirty();
+};
+$("exportBtn").onclick = () => {
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(new Blob([JSON.stringify(arena, null, 1)], { type: "application/json" }));
+  a.download = "tello-arena.json"; a.click();
+};
+$("importBtn").onclick = () => $("importFile").click();
+$("importFile").onchange = async (e) => {
+  const f = e.target.files[0]; if (!f) return;
+  try { const a = JSON.parse(await f.text()); arena = Object.assign({ stars: [], rings: [], pillars: [], walls: [], pad: null }, a); sel = null; draw(); renderProps(); markDirty(); }
+  catch (err) { alert("檔案格式不對"); }
+  e.target.value = "";
+};
+let dirty = false;
+function markDirty() { dirty = true; $("applyBtn").textContent = "✅ 套用到比賽場地（有變更）"; }
+$("applyBtn").onclick = async () => {
+  if (!arena.stars.length && !arena.rings.length && !arena.pad) { alert("場地至少要有一個星星、圈或停機坪，才有任務可以完成喔！"); return; }
+  const r = await api("arena", { arena });
+  if (r.ok) { dirty = false; $("applyBtn").textContent = "✅ 已套用！"; setTimeout(() => { if (!dirty) $("applyBtn").textContent = "✅ 套用到比賽場地"; }, 2000); }
+};
+
+/* ---------------- 比賽控制 ---------------- */
+let mode = "first", state = null, offset = 0, gotArena = false;
+$("modeSeg").onclick = async (e) => {
+  const b = e.target.closest("button"); if (!b) return;
+  mode = b.dataset.m; paintMode();
+  await api("mode", { mode });
+};
+function paintMode() { for (const b of $("modeSeg").children) b.classList.toggle("on", b.dataset.m === mode); }
+$("startBtn").onclick = async () => {
+  if (state && state.contest.status === "running" && !confirm("比賽進行中，要重新開始嗎？成績會清除。")) return;
+  if (dirty && confirm("場地有變更還沒套用，要先套用嗎？")) await $("applyBtn").onclick();
+  await api("start", { mode, duration: +$("duration").value });
+  poll();
+};
+$("stopBtn").onclick = async () => { await api("stop"); poll(); };
+$("resetBtn").onclick = async () => { if (confirm("要清除所有成績和飛行紀錄嗎？（隊伍會保留）")) { await api("reset"); poll(); } };
+$("clearTeams").onclick = async () => { if (confirm("要清除所有隊伍嗎？學生需要重新輸入隊名。")) { await api("clearTeams"); poll(); } };
+$("board").onclick = async (e) => {
+  const b = e.target.closest(".kick"); if (!b) return;
+  if (confirm("要把這一隊移除嗎？")) { await api("kick", { teamId: b.dataset.id }); poll(); }
+};
+const fmt = (s) => { if (s == null) return "—"; s = Math.max(0, s); const m = Math.floor(s / 60); return m + ":" + String(Math.floor(s % 60)).padStart(2, "0"); };
+async function poll() {
+  try {
+    const r = await fetch("api/state?since=-1", { cache: "no-store" });
+    state = await r.json();
+    offset = state.now - Date.now() / 1000;
+    if (!gotArena) { gotArena = true; if (state.arena) { arena = Object.assign({ stars: [], rings: [], pillars: [], walls: [], pad: null }, state.arena); draw(); } }
+    mode = state.contest.mode; paintMode();
+    renderBoard();
+  } catch (e) {}
+}
+function renderBoard() {
+  const c = state.contest;
+  $("status").textContent = { idle: "等待開始", running: "比賽中", ended: "比賽結束" }[c.status];
+  $("status").className = "status-pill " + c.status;
+  const rows = state.leaderboard;
+  $("teamCount").textContent = rows.length + " 隊";
+  $("board").innerHTML = rows.map((r) => `<tr>
+    <td class="rank">${r.rank ? ["🥇", "🥈", "🥉"][r.rank - 1] || r.rank : "—"}</td>
+    <td><span class="dot" style="background:${r.color}"></span>${esc(r.name)} ${r.online ? "" : '<span class="off">（離線）</span>'}</td>
+    <td>${r.firstAt != null ? fmt(r.firstAt) : "—"}</td>
+    <td>${r.bestTime != null ? r.bestTime + " 秒" : "—"}</td>
+    <td>${r.bestLines != null ? r.bestLines + " 行" : "—"}</td>
+    <td>${r.tries}</td>
+    <td><button class="kick" data-id="${r.id}" title="移除這一隊">✕</button></td></tr>`).join("") || '<tr><td colspan="7" class="off" style="text-align:center;padding:20px">還沒有隊伍加入。請學生在模擬器的「🗺️ 關卡」選「🏁 比賽場地」並輸入隊名。</td></tr>';
+}
+function tick() {
+  if (state) {
+    const c = state.contest, now = Date.now() / 1000 + offset;
+    let txt = "--:--";
+    if (c.status === "running") txt = c.duration ? fmt(c.duration - (now - c.startedAt)) : fmt(now - c.startedAt);
+    else if (c.status === "ended" && c.startedAt) txt = fmt((c.endedAt || now) - c.startedAt);
+    $("timer").textContent = txt;
+  }
+  requestAnimationFrame(tick);
+}
+function start() {
+  $("who").textContent = "已登入";
+  resize(); renderProps();
+  poll(); setInterval(poll, 1500); tick();
+}
+</script>
+</body>
+</html>

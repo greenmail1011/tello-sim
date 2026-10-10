@@ -949,6 +949,39 @@ def _explain_syntax(e, code_lines):
             "hint": hint, "line": line}
 
 
+# ---------- 程式分析（給關卡星星判定用） ----------
+def _analyze(code):
+    import ast
+    try:
+        tree = ast.parse(code)
+    except Exception:
+        return None
+    info = {"lines": 0, "for": 0, "while": 0, "def": 0, "calls": [], "names": [], "imports": []}
+    info["lines"] = len([l for l in code.split("\n") if l.strip() and not l.strip().startswith("#")])
+    calls, names, imports = set(), set(), set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.For):
+            info["for"] += 1
+        elif isinstance(node, ast.While):
+            info["while"] += 1
+        elif isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            info["def"] += 1
+        elif isinstance(node, ast.Call):
+            if isinstance(node.func, ast.Attribute):
+                calls.add(node.func.attr)
+            elif isinstance(node.func, ast.Name):
+                names.add(node.func.id)
+        elif isinstance(node, ast.Import):
+            for n in node.names:
+                imports.add(n.name.split(".")[0])
+        elif isinstance(node, ast.ImportFrom) and node.module:
+            imports.add(node.module.split(".")[0])
+    info["calls"] = sorted(calls)
+    info["names"] = sorted(names)
+    info["imports"] = sorted(imports)
+    return info
+
+
 # ---------- 主程式：執行學生程式 ----------
 def run_student(code):
     WORLD.reset()
@@ -1000,6 +1033,7 @@ def run_student(code):
         "warnings": w.warnings,
         "error": error,
         "total": _r(w.t, 3),
+        "analysis": _analyze(code),
         "final": {"pose": w.pose(), "flying": w.flying, "battery": w.battery(),
                   "flight_time": _r(w.flight_time, 1), "ever_flew": w.ever_flew},
     }, ensure_ascii=False)
